@@ -522,14 +522,14 @@ public:
 
     ~UniValue() { destruct(); }
 
-    void setNull() noexcept;
-    void operator=(bool val) noexcept;
-    Object& setObject() noexcept;
+    void setNull();
+    void operator=(bool val);
+    Object& setObject();
     Object& operator=(const Object& object);
-    Object& operator=(Object&& object) noexcept;
-    Array& setArray() noexcept;
+    Object& operator=(Object&& object);
+    Array& setArray();
     Array& operator=(const Array& array);
-    Array& operator=(Array&& array) noexcept;
+    Array& operator=(Array&& array);
     void setNumStr(const char* val); // TODO: refactor to assign null on failure
     void operator=(short val);
     void operator=(int val);
@@ -541,7 +541,7 @@ public:
     void operator=(unsigned long long val);
     void operator=(double val);
     std::string& operator=(std::string_view val);
-    std::string& operator=(std::string&& val) noexcept;
+    std::string& operator=(std::string&& val);
     std::string& operator=(const char* val_) { return *this = std::string_view(val_); }
 
     [[nodiscard]]

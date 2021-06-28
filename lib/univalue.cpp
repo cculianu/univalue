@@ -146,18 +146,18 @@ const UniValue& UniValue::Array::back() const noexcept
     return Null;
 }
 
-void UniValue::setNull() noexcept
+void UniValue::setNull()
 {
     destruct();
 }
 
-void UniValue::operator=(bool val_) noexcept
+void UniValue::operator=(bool val_)
 {
     setNull();
     typ = val_ ? VTRUE : VFALSE;
 }
 
-UniValue::Object& UniValue::setObject() noexcept
+UniValue::Object& UniValue::setObject()
 {
     setNull();
     typ = VOBJ;
@@ -169,13 +169,13 @@ UniValue::Object& UniValue::operator=(const Object& object)
     setObject();
     return u.entries = object;
 }
-UniValue::Object& UniValue::operator=(Object&& object) noexcept
+UniValue::Object& UniValue::operator=(Object&& object)
 {
     setObject();
     return u.entries = std::move(object);
 }
 
-UniValue::Array& UniValue::setArray() noexcept
+UniValue::Array& UniValue::setArray()
 {
     setNull();
     typ = VARR;
@@ -187,7 +187,7 @@ UniValue::Array& UniValue::operator=(const Array& array)
     setArray();
     return u.values = array;
 }
-UniValue::Array& UniValue::operator=(Array&& array) noexcept
+UniValue::Array& UniValue::operator=(Array&& array)
 {
     setArray();
     return u.values = std::move(array);
@@ -258,7 +258,7 @@ std::string& UniValue::operator=(std::string_view val_)
     construct(std::string{val_});
     return u.val;
 }
-std::string& UniValue::operator=(std::string&& val_) noexcept
+std::string& UniValue::operator=(std::string&& val_)
 {
     setNull();
     typ = VSTR;
