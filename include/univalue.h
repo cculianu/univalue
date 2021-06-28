@@ -482,15 +482,26 @@ public:
                   "UniValue::size_type should be equal to both UniValue::Object::size_type and UniValue::Array::size_type.");
 
     explicit UniValue(VType initialType = VNULL) noexcept : typ(initialType) { construct(); }
+
+    // Note: The below "string-like" constructors are unsafe since they do not check or validate the contents of
+    // the supplied string. They are offered as a performance optimization for advanced usage.
+    // - Calling these 3 constructors with anything other than: VNUM or VSTR as the initialType leads to this instance
+    //   being force-set to VNULL, and initialStr is discarded.
+    // - If specifying VNUM for initialType, initialStr must be parseable as numeric otherwise this class will
+    //   produce incorrect JSON (and may exhibit other weird behavior).
+    // - If specifying VSTR for initialType, initialStr must be a valid utf-8 string. Invalid codepoints may lead to
+    //   invalid JSON being produced.
     UniValue(VType initialType, std::string_view initialStr) : typ(initialType) { construct(std::string{initialStr}); }
     UniValue(VType initialType, std::string&& initialStr) noexcept : typ(initialType) { construct(std::move(initialStr)); }
     UniValue(VType initialType, const char* initialStr) : typ(initialType) { construct(initialStr); }
+
+    // Copy construction, move construction, copy assignment, and move-assignment
     explicit UniValue(const UniValue& o);
     UniValue(UniValue&& o) noexcept;
-    ~UniValue() { destruct(); }
     UniValue& operator=(const UniValue &o);
     UniValue& operator=(UniValue &&o) noexcept;
 
+    // Misc. convenience constructors
     UniValue(bool val_) noexcept : typ(val_ ? VTRUE : VFALSE) {}
     explicit UniValue(const Object& object) : typ(VOBJ) { construct(object); }
     UniValue(Object&& object) noexcept : typ(VOBJ) { construct(std::move(object)); }
@@ -508,6 +519,8 @@ public:
     UniValue(std::string_view val_) : typ(VSTR) { construct(std::string{val_}); }
     UniValue(std::string&& val_) noexcept : typ(VSTR) { construct(std::move(val_)); }
     UniValue(const char* val_) : typ(VSTR){ construct(val_); }
+
+    ~UniValue() { destruct(); }
 
     void setNull() noexcept;
     void operator=(bool val) noexcept;
