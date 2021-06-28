@@ -306,16 +306,16 @@ void UniValue::stringify(Stream& ss, const UniValue& value, const unsigned int p
         ss << "true";
         break;
     case VOBJ:
-        stringify(ss, value.entries, prettyIndent, indentLevel);
+        stringify(ss, value.u.entries, prettyIndent, indentLevel);
         break;
     case VARR:
-        stringify(ss, value.values, prettyIndent, indentLevel);
+        stringify(ss, value.u.values, prettyIndent, indentLevel);
         break;
     case VNUM:
-        ss << value.val;
+        ss << value.u.val;
         break;
     case VSTR:
-        stringify(ss, value.val, prettyIndent, indentLevel);
+        stringify(ss, value.u.val, prettyIndent, indentLevel);
         break;
     }
 }

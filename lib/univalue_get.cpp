@@ -51,37 +51,37 @@ const std::string& UniValue::get_str() const
 {
     if (!isStr())
         throw std::runtime_error("JSON value is not a string as expected");
-    return val;
+    return u.val;
 }
 std::string& UniValue::get_str()
 {
     if (!isStr())
         throw std::runtime_error("JSON value is not a string as expected");
-    return val;
+    return u.val;
 }
 
 const UniValue::Object& UniValue::get_obj() const
 {
     if (!isObject())
         throw std::runtime_error("JSON value is not an object as expected");
-    return entries;
+    return u.entries;
 }
 UniValue::Object& UniValue::get_obj()
 {
     if (!isObject())
         throw std::runtime_error("JSON value is not an object as expected");
-    return entries;
+    return u.entries;
 }
 
 const UniValue::Array& UniValue::get_array() const
 {
     if (!isArray())
         throw std::runtime_error("JSON value is not an array as expected");
-    return values;
+    return u.values;
 }
 UniValue::Array& UniValue::get_array()
 {
     if (!isArray())
         throw std::runtime_error("JSON value is not an array as expected");
-    return values;
+    return u.values;
 }

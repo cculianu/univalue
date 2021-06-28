@@ -591,15 +591,15 @@ const char* UniValue::read(const char* buffer, const char** errpos)
                 } else {
                     UniValue *top = stack.back();
                     if (top->typ == VOBJ) {
-                        auto& value = top->entries.rbegin()->second;
+                        auto& value = top->u.entries.rbegin()->second;
                         if (utyp == VOBJ)
                             value.setObject();
                         else
                             value.setArray();
                         stack.push_back(&value);
                     } else {
-                        top->values.emplace_back(utyp);
-                        stack.push_back(&*top->values.rbegin());
+                        top->u.values.emplace_back(utyp);
+                        stack.push_back(&*top->u.values.rbegin());
                     }
                 }
 
@@ -677,9 +677,9 @@ const char* UniValue::read(const char* buffer, const char** errpos)
 
                 UniValue *top = stack.back();
                 if (top->typ == VOBJ) {
-                    top->entries.rbegin()->second = std::move(tmpVal);
+                    top->u.entries.rbegin()->second = std::move(tmpVal);
                 } else {
-                    top->values.emplace_back(std::move(tmpVal));
+                    top->u.values.emplace_back(std::move(tmpVal));
                 }
 
                 setExpect(NOT_VALUE);
@@ -695,9 +695,9 @@ const char* UniValue::read(const char* buffer, const char** errpos)
 
                 UniValue *top = stack.back();
                 if (top->typ == VOBJ) {
-                    top->entries.rbegin()->second = std::move(tmpVal);
+                    top->u.entries.rbegin()->second = std::move(tmpVal);
                 } else {
-                    top->values.emplace_back(std::move(tmpVal));
+                    top->u.values.emplace_back(std::move(tmpVal));
                 }
 
                 setExpect(NOT_VALUE);
@@ -707,9 +707,9 @@ const char* UniValue::read(const char* buffer, const char** errpos)
             case JTOK_STRING: {
                 if (expect(OBJ_NAME)) {
                     UniValue *top = stack.back();
-                    top->entries.emplace_back(std::piecewise_construct,
-                                              std::forward_as_tuple(std::move(tokenVal)),
-                                              std::forward_as_tuple());
+                    top->u.entries.emplace_back(std::piecewise_construct,
+                                                std::forward_as_tuple(std::move(tokenVal)),
+                                                std::forward_as_tuple());
                     clearExpect(OBJ_NAME);
                     setExpect(COLON);
                 } else {
@@ -720,9 +720,9 @@ const char* UniValue::read(const char* buffer, const char** errpos)
                     }
                     UniValue *top = stack.back();
                     if (top->typ == VOBJ) {
-                        top->entries.rbegin()->second = std::move(tmpVal);
+                        top->u.entries.rbegin()->second = std::move(tmpVal);
                     } else {
-                        top->values.emplace_back(std::move(tmpVal));
+                        top->u.values.emplace_back(std::move(tmpVal));
                     }
                 }
 

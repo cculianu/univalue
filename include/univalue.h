@@ -147,7 +147,7 @@ public:
 
         /**
          * Returns a reference to the first value associated with the key,
-         * or NullUniValue if the key does not exist.
+         * or UniValue::Null if the key does not exist.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -160,7 +160,7 @@ public:
 
         /**
          * Returns a reference to the value at the numeric index (regardless of key),
-         * or NullUniValue if index >= object size.
+         * or UniValue::Null if index >= object size.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -216,7 +216,7 @@ public:
 
         /**
          * Returns a reference to the first value (regardless of key),
-         * or NullUniValue if the object is empty.
+         * or UniValue::Null if the object is empty.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -227,7 +227,7 @@ public:
 
         /**
          * Returns a reference to the last value (regardless of key),
-         * or NullUniValue if the object is empty.
+         * or UniValue::Null if the object is empty.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -389,7 +389,7 @@ public:
 
         /**
          * Returns a reference to the value at the index,
-         * or NullUniValue if index >= array size.
+         * or UniValue::Null if index >= array size.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -416,7 +416,7 @@ public:
 
         /**
          * Returns a reference to the first value,
-         * or NullUniValue if the array is empty.
+         * or UniValue::Null if the array is empty.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -427,7 +427,7 @@ public:
 
         /**
          * Returns a reference to the last value,
-         * or NullUniValue if the array is empty.
+         * or UniValue::Null if the array is empty.
          *
          * The returned reference follows the iterator invalidation rules of the underlying vector.
          *
@@ -481,20 +481,21 @@ public:
     static_assert(std::is_same<size_type, Array::size_type>::value,
                   "UniValue::size_type should be equal to both UniValue::Object::size_type and UniValue::Array::size_type.");
 
-    explicit UniValue(VType initialType = VNULL) noexcept : typ(initialType) {}
-    UniValue(VType initialType, std::string_view initialStr) : typ(initialType), val(initialStr) {}
-    UniValue(VType initialType, std::string&& initialStr) noexcept : typ(initialType), val(std::move(initialStr)) {}
-    UniValue(VType initialType, const char* initialStr) : typ(initialType), val(initialStr) {}
-    explicit UniValue(const UniValue&) = default;
-    UniValue(UniValue&&) noexcept = default;
-    UniValue& operator=(const UniValue&) = default;
-    UniValue& operator=(UniValue&&) noexcept = default;
+    explicit UniValue(VType initialType = VNULL) noexcept : typ(initialType) { construct(); }
+    UniValue(VType initialType, std::string_view initialStr) : typ(initialType) { construct(std::string{initialStr}); }
+    UniValue(VType initialType, std::string&& initialStr) noexcept : typ(initialType) { construct(std::move(initialStr)); }
+    UniValue(VType initialType, const char* initialStr) : typ(initialType) { construct(initialStr); }
+    explicit UniValue(const UniValue& o);
+    UniValue(UniValue&& o) noexcept;
+    ~UniValue() { destruct(); }
+    UniValue& operator=(const UniValue &o);
+    UniValue& operator=(UniValue &&o) noexcept;
 
     UniValue(bool val_) noexcept : typ(val_ ? VTRUE : VFALSE) {}
-    explicit UniValue(const Object& object) : typ(VOBJ), entries(object) {}
-    UniValue(Object&& object) noexcept : typ(VOBJ), entries(std::move(object)) {}
-    explicit UniValue(const Array& array) : typ(VARR), values(array) {}
-    UniValue(Array&& array) noexcept : typ(VARR), values(std::move(array)) {}
+    explicit UniValue(const Object& object) : typ(VOBJ) { construct(object); }
+    UniValue(Object&& object) noexcept : typ(VOBJ) { construct(std::move(object)); }
+    explicit UniValue(const Array& array) : typ(VARR) { construct(array); }
+    UniValue(Array&& array) noexcept : typ(VARR) { construct(std::move(array)); }
     UniValue(short val_) { *this = val_; }
     UniValue(int val_) { *this = val_; }
     UniValue(long val_) { *this = val_; }
@@ -504,9 +505,9 @@ public:
     UniValue(unsigned long val_) { *this = val_; }
     UniValue(unsigned long long val_) { *this = val_; }
     UniValue(double val_) { *this = val_; }
-    UniValue(std::string_view val_) : typ(VSTR), val(val_) {}
-    UniValue(std::string&& val_) noexcept : typ(VSTR), val(std::move(val_)) {}
-    UniValue(const char* val_) : typ(VSTR), val(val_) {}
+    UniValue(std::string_view val_) : typ(VSTR) { construct(std::string{val_}); }
+    UniValue(std::string&& val_) noexcept : typ(VSTR) { construct(std::move(val_)); }
+    UniValue(const char* val_) : typ(VSTR){ construct(val_); }
 
     void setNull() noexcept;
     void operator=(bool val) noexcept;
@@ -533,7 +534,7 @@ public:
     [[nodiscard]]
     constexpr VType getType() const noexcept { return typ; }
     [[nodiscard]]
-    constexpr const std::string& getValStr() const noexcept { return val; }
+    constexpr const std::string& getValStr() const noexcept { return typ == VSTR || typ == VNUM ? u.val : emptyVal; }
 
     /**
      * VOBJ/VARR: Returns whether the object/array is empty.
@@ -547,9 +548,9 @@ public:
     bool empty() const noexcept {
         switch (typ) {
         case VOBJ:
-            return entries.empty();
+            return u.entries.empty();
         case VARR:
-            return values.empty();
+            return u.values.empty();
         default:
             return true;
         }
@@ -567,9 +568,9 @@ public:
     size_type size() const noexcept {
         switch (typ) {
         case VOBJ:
-            return entries.size();
+            return u.entries.size();
         case VARR:
-            return values.size();
+            return u.values.size();
         default:
             return 0;
         }
@@ -580,8 +581,8 @@ public:
 
     /**
      * VOBJ: Returns a reference to the first value associated with the key,
-     *       or NullUniValue if the key does not exist.
-     * Other types: Returns NullUniValue.
+     *       or UniValue::Null if the key does not exist.
+     * Other types: Returns UniValue::Null.
      *
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
@@ -597,10 +598,10 @@ public:
 
     /**
      * VOBJ: Returns a reference to the value at the numeric index (regardless of key),
-     *       or NullUniValue if index >= object size.
+     *       or UniValue::Null if index >= object size.
      * VARR: Returns a reference to the element at the index,
-     *       or NullUniValue if index >= array size.
-     * Other types: Returns NullUniValue.
+     *       or UniValue::Null if index >= array size.
+     * Other types: Returns UniValue::Null.
      *
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
@@ -638,10 +639,10 @@ public:
 
     /**
      * VOBJ: Returns a reference to the first value (regardless of key),
-     *       or NullUniValue if the object is empty.
+     *       or UniValue::Null if the object is empty.
      * VARR: Returns a reference to the first element,
-     *       or NullUniValue if the array is empty.
-     * Other types: Returns NullUniValue.
+     *       or UniValue::Null if the array is empty.
+     * Other types: Returns UniValue::Null.
      *
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
@@ -654,10 +655,10 @@ public:
 
     /**
      * VOBJ: Returns a reference to the last value (regardless of key),
-     *       or NullUniValue if the object is empty.
+     *       or UniValue::Null if the object is empty.
      * VARR: Returns a reference to the last element,
-     *       or NullUniValue if the array is empty.
-     * Other types: Returns NullUniValue.
+     *       or UniValue::Null if the array is empty.
+     * Other types: Returns UniValue::Null.
      *
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
@@ -802,9 +803,25 @@ public:
 
 private:
     UniValue::VType typ = VNULL;
-    std::string val;                       // numbers are stored as C++ strings
-    Object entries;
-    Array values;
+    bool constructed = false;
+    union U {
+        std::string val;                       // numbers are stored as C++ strings
+        Object entries;
+        Array values;
+        U() {}
+        ~U() {}
+    } u;
+
+    static const std::string emptyVal; ///< returned by getValStr() if this is not a VNUM or VSTR
+
+    void construct() noexcept;
+    void construct(std::string &&s) noexcept;
+    void construct(const std::string &s);
+    void construct(Object &&o) noexcept;
+    void construct(const Object &o);
+    void construct(Array &&a) noexcept;
+    void construct(const Array &a);
+    void destruct();
 
     // Opaque type used for writing. This can be further optimized later.
     struct Stream {
@@ -881,6 +898,8 @@ public:
     const Array& get_array() const;
     Array& get_array();
 
+    // Misc utility functions
+
     [[nodiscard]]
     constexpr VType type() const noexcept { return getType(); }
 
@@ -904,5 +923,5 @@ public:
 
     /// Rerpresents the "null" UniValue. A reference to this singleton is returned from some methods to indicate
     /// not found, etc. Its state is identical to a default-constructed UniValue instance.
-    static const UniValue NullUniValue;
+    static const UniValue Null;
 };

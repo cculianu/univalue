@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cinttypes>
 #include <cstdlib>
 #include <cmath>
@@ -22,14 +23,15 @@
 #include "univalue.h"
 #include "univalue_internal.h"
 
-const UniValue UniValue::NullUniValue{VNULL};
+/* static */ const UniValue UniValue::Null{VNULL};
+/* static */ const std::string UniValue::emptyVal{};
 
 const UniValue& UniValue::Object::operator[](std::string_view key) const noexcept
 {
     if (auto found = locate(key)) {
         return *found;
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::Object::operator[](size_type index) const noexcept
@@ -37,7 +39,7 @@ const UniValue& UniValue::Object::operator[](size_type index) const noexcept
     if (index < vector.size()) {
         return vector[index].second;
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue* UniValue::Object::locate(std::string_view key) const noexcept {
@@ -92,7 +94,7 @@ const UniValue& UniValue::Object::front() const noexcept
     if (!vector.empty()) {
         return vector.front().second;
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::Object::back() const noexcept
@@ -100,7 +102,7 @@ const UniValue& UniValue::Object::back() const noexcept
     if (!vector.empty()) {
         return vector.back().second;
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::Array::operator[](size_type index) const noexcept
@@ -108,7 +110,7 @@ const UniValue& UniValue::Array::operator[](size_type index) const noexcept
     if (index < vector.size()) {
         return vector[index];
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::Array::at(size_type index) const
@@ -133,7 +135,7 @@ const UniValue& UniValue::Array::front() const noexcept
     if (!vector.empty()) {
         return vector.front();
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::Array::back() const noexcept
@@ -141,15 +143,12 @@ const UniValue& UniValue::Array::back() const noexcept
     if (!vector.empty()) {
         return vector.back();
     }
-    return NullUniValue;
+    return Null;
 }
 
 void UniValue::setNull() noexcept
 {
-    typ = VNULL;
-    val.clear();
-    entries.clear();
-    values.clear();
+    destruct();
 }
 
 void UniValue::operator=(bool val_) noexcept
@@ -162,34 +161,36 @@ UniValue::Object& UniValue::setObject() noexcept
 {
     setNull();
     typ = VOBJ;
-    return entries;
+    construct();
+    return u.entries;
 }
 UniValue::Object& UniValue::operator=(const Object& object)
 {
     setObject();
-    return entries = object;
+    return u.entries = object;
 }
 UniValue::Object& UniValue::operator=(Object&& object) noexcept
 {
     setObject();
-    return entries = std::move(object);
+    return u.entries = std::move(object);
 }
 
 UniValue::Array& UniValue::setArray() noexcept
 {
     setNull();
     typ = VARR;
-    return values;
+    construct();
+    return u.values;
 }
 UniValue::Array& UniValue::operator=(const Array& array)
 {
     setArray();
-    return values = array;
+    return u.values = array;
 }
 UniValue::Array& UniValue::operator=(Array&& array) noexcept
 {
     setArray();
-    return values = std::move(array);
+    return u.values = std::move(array);
 }
 
 void UniValue::setNumStr(const char* val_)
@@ -197,7 +198,7 @@ void UniValue::setNumStr(const char* val_)
     if (auto optStr = univalue_internal::validateAndStripNumStr(val_)) {
         setNull();
         typ = VNUM;
-        val = std::move(*optStr);
+        construct(std::move(*optStr));
     }
 }
 
@@ -217,7 +218,8 @@ void UniValue::setInt64(Int64 val_)
     if (n <= 0 || n >= bufSize) // should never happen
         return;
     typ = VNUM;
-    val.assign(buf.data(), std::string::size_type(n));
+    construct();
+    u.val.assign(buf.data(), std::string::size_type(n));
 }
 
 void UniValue::operator=(short val_) { setInt64<int64_t>(val_); }
@@ -246,20 +248,22 @@ void UniValue::operator=(double val_)
     oss.imbue(std::locale::classic());
     oss << std::setprecision(16) << val_;
     typ = VNUM;
-    val = oss.str();
+    construct(oss.str());
 }
 
 std::string& UniValue::operator=(std::string_view val_)
 {
     setNull();
     typ = VSTR;
-    return val = val_;
+    construct(std::string{val_});
+    return u.val;
 }
 std::string& UniValue::operator=(std::string&& val_) noexcept
 {
     setNull();
     typ = VSTR;
-    return val = std::move(val_);
+    construct(std::move(val_));
+    return u.val;
 }
 
 const UniValue& UniValue::operator[](std::string_view key) const noexcept
@@ -267,18 +271,18 @@ const UniValue& UniValue::operator[](std::string_view key) const noexcept
     if (auto found = locate(key)) {
         return *found;
     }
-    return NullUniValue;
+    return Null;
 }
 
 const UniValue& UniValue::operator[](size_type index) const noexcept
 {
     switch (typ) {
     case VOBJ:
-        return entries[index];
+        return u.entries[index];
     case VARR:
-        return values[index];
+        return u.values[index];
     default:
-        return NullUniValue;
+        return Null;
     }
 }
 
@@ -286,11 +290,11 @@ const UniValue& UniValue::front() const noexcept
 {
     switch (typ) {
     case VOBJ:
-        return entries.front();
+        return u.entries.front();
     case VARR:
-        return values.front();
+        return u.values.front();
     default:
-        return NullUniValue;
+        return Null;
     }
 }
 
@@ -298,31 +302,31 @@ const UniValue& UniValue::back() const noexcept
 {
     switch (typ) {
     case VOBJ:
-        return entries.back();
+        return u.entries.back();
     case VARR:
-        return values.back();
+        return u.values.back();
     default:
-        return NullUniValue;
+        return Null;
     }
 }
 
 const UniValue* UniValue::locate(std::string_view key) const noexcept {
-    return entries.locate(key);
+    return typ == VOBJ ? u.entries.locate(key) : nullptr;
 }
 UniValue* UniValue::locate(std::string_view key) noexcept {
-    return entries.locate(key);
+    return typ == VOBJ ? u.entries.locate(key) : nullptr;
 }
 
 const UniValue& UniValue::at(std::string_view key) const {
     if (typ == VOBJ) {
-        return entries.at(key);
+        return u.entries.at(key);
     }
     throw std::domain_error(std::string("Cannot look up keys in JSON ") + typeName(typ) +
                             ", expected object with key: " + std::string(key));
 }
 UniValue& UniValue::at(std::string_view key) {
     if (typ == VOBJ) {
-        return entries.at(key);
+        return u.entries.at(key);
     }
     throw std::domain_error(std::string("Cannot look up keys in JSON ") + typeName(typ) +
                             ", expected object with key: " + std::string(key));
@@ -332,9 +336,9 @@ const UniValue& UniValue::at(size_type index) const
 {
     switch (typ) {
     case VOBJ:
-        return entries.at(index);
+        return u.entries.at(index);
     case VARR:
-        return values.at(index);
+        return u.values.at(index);
     default:
         throw std::domain_error(std::string("Cannot look up indices in JSON ") + typeName(typ) +
                                 ", expected array or object larger than " + std::to_string(index) + " elements");
@@ -344,9 +348,9 @@ UniValue& UniValue::at(size_type index)
 {
     switch (typ) {
     case VOBJ:
-        return entries.at(index);
+        return u.entries.at(index);
     case VARR:
-        return values.at(index);
+        return u.values.at(index);
     default:
         throw std::domain_error(std::string("Cannot look up indices in JSON ") + typeName(typ) +
                                 ", expected array or object larger than " + std::to_string(index) + " elements");
@@ -361,12 +365,12 @@ bool UniValue::operator==(const UniValue& other) const noexcept
     // Some types have additional requirements for equality.
     switch (typ) {
     case VOBJ:
-        return entries == other.entries;
+        return u.entries == other.u.entries;
     case VARR:
-        return values == other.values;
+        return u.values == other.u.values;
     case VNUM:
     case VSTR:
-        return val == other.val;
+        return u.val == other.u.val;
     case VNULL:
     case VFALSE:
     case VTRUE:
@@ -412,4 +416,193 @@ std::string UniValue::typeName(int t) {
     appendTypeNameIfTypeIncludes(UniValue::VNUM);
     appendTypeNameIfTypeIncludes(UniValue::VSTR);
     return result;
+}
+
+void UniValue::construct() noexcept {
+    assert(!constructed);
+    switch (typ) {
+    case VNUM:
+    case VSTR:
+        new (&u.val) std::string;
+        constructed = true;
+        break;
+    case VOBJ:
+        new (&u.entries) Object;
+        constructed = true;
+        break;
+    case VARR:
+        new (&u.values) Array;
+        constructed = true;
+        break;
+    default:
+        break;
+    }
+}
+void UniValue::construct(std::string &&s) noexcept {
+    assert(!constructed);
+    if (typ == VNUM || typ == VSTR) {
+        new (&u.val) std::string(std::move(s));
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::construct(const std::string &s) {
+    assert(!constructed);
+    if (typ == VNUM || typ == VSTR) {
+        new (&u.val) std::string(s);
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::construct(Object &&o) noexcept {
+    assert(!constructed);
+    if (typ == VOBJ) {
+        new (&u.entries) Object(std::move(o));
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::construct(const Object &o) {
+    assert(!constructed);
+    if (typ == VOBJ) {
+        new (&u.entries) Object(o);
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::construct(Array &&a) noexcept {
+    assert(!constructed);
+    if (typ == VARR) {
+        new (&u.values) Array(std::move(a));
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::construct(const Array &a) {
+    assert(!constructed);
+    if (typ == VARR) {
+        new (&u.values) Array(a);
+        constructed = true;
+    } else
+        typ = VNULL; // refuse to proceed
+}
+void UniValue::destruct() {
+    if (constructed) {
+        switch (typ) {
+        case UniValue::VNUM:
+        case UniValue::VSTR:
+            using String = std::string; // work-around compiler quirks
+            u.val.~String();
+            break;
+        case UniValue::VOBJ:
+            u.entries.~Object();
+            break;
+        case UniValue::VARR:
+            u.values.~Array();
+            break;
+        default:
+            break;
+        }
+    }
+    typ = VNULL;
+    constructed = false;
+}
+
+UniValue::UniValue(const UniValue& o) : typ(o.typ) {
+    switch (typ) {
+    case VNUM:
+    case VSTR:
+        construct(o.u.val);
+        break;
+    case VOBJ:
+        construct(o.u.entries);
+        break;
+    case VARR:
+        construct(o.u.values);
+        break;
+    default: break;
+    }
+}
+UniValue::UniValue(UniValue&& o) noexcept : typ(o.typ) {
+    switch (typ) {
+    case VNUM:
+    case VSTR:
+        construct(std::move(o.u.val));
+        break;
+    case VOBJ:
+        construct(std::move(o.u.entries));
+        break;
+    case VARR:
+        construct(std::move(o.u.values));
+        break;
+    default: break;
+    }
+}
+UniValue& UniValue::operator=(const UniValue &o) {
+    if (typ != o.typ) {
+        destruct();
+        typ = o.typ;
+        switch (typ) {
+        case VNUM:
+        case VSTR:
+            construct(o.u.val);
+            break;
+        case VOBJ:
+            construct(o.u.entries);
+            break;
+        case VARR:
+            construct(o.u.values);
+            break;
+        default: break;
+        }
+    } else {
+        switch (typ) {
+        case VNUM:
+        case VSTR:
+            u.val = o.u.val;
+            break;
+        case VOBJ:
+            u.entries = o.u.entries;
+            break;
+        case VARR:
+            u.values = o.u.values;
+            break;
+        default: break;
+        }
+    }
+    return *this;
+}
+UniValue& UniValue::operator=(UniValue &&o) noexcept {
+    if (typ != o.typ) {
+        destruct();
+        typ = o.typ;
+        switch (typ) {
+        case VNUM:
+        case VSTR:
+            construct(std::move(o.u.val));
+            break;
+        case VOBJ:
+            construct(std::move(o.u.entries));
+            break;
+        case VARR:
+            construct(std::move(o.u.values));
+            break;
+        default: break;
+        }
+    } else {
+        switch (typ) {
+        case VNUM:
+        case VSTR:
+            u.val = std::move(o.u.val);
+            break;
+        case VOBJ:
+            u.entries = std::move(o.u.entries);
+            break;
+        case VARR:
+            u.values = std::move(o.u.values);
+            break;
+        default: break;
+        }
+    }
+    return *this;
 }

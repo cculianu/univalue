@@ -468,8 +468,8 @@ BOOST_AUTO_TEST_CASE(univalue_array)
     BOOST_CHECK_EQUAL(arr[9].getValStr(), "");
     BOOST_CHECK_EQUAL(arr["nyuknyuknyuk"].getValStr(), "");
 
-    BOOST_CHECK_EQUAL(&arr[9], &UniValue::NullUniValue);
-    BOOST_CHECK_EQUAL(&arr["nyuknyuknyuk"], &UniValue::NullUniValue);
+    BOOST_CHECK_EQUAL(&arr[9], &UniValue::Null);
+    BOOST_CHECK_EQUAL(&arr["nyuknyuknyuk"], &UniValue::Null);
 
     BOOST_CHECK_EQUAL(arr.locate("nyuknyuknyuk"), nullptr);
 
@@ -492,8 +492,8 @@ BOOST_AUTO_TEST_CASE(univalue_array)
     BOOST_CHECK(arr.empty());
     BOOST_CHECK_EQUAL(arr.size(), 0);
     BOOST_CHECK_EQUAL(arr.getType(), UniValue::VNULL);
-    BOOST_CHECK_EQUAL(&arr[0], &UniValue::NullUniValue);
-    BOOST_CHECK_EQUAL(&arr["nyuknyuknyuk"], &UniValue::NullUniValue);
+    BOOST_CHECK_EQUAL(&arr[0], &UniValue::Null);
+    BOOST_CHECK_EQUAL(&arr["nyuknyuknyuk"], &UniValue::Null);
     BOOST_CHECK_EQUAL(arr.locate("nyuknyuknyuk"), nullptr);
     BOOST_CHECK_THROW(arr.at(0), std::domain_error);
     BOOST_CHECK_THROW(arr.at("nyuknyuknyuk"), std::domain_error);
@@ -603,7 +603,7 @@ BOOST_AUTO_TEST_CASE(univalue_object)
     BOOST_CHECK_EQUAL(&obj[13], &obj["cat1"]);
     BOOST_CHECK_EQUAL(&obj[14], &obj["cat2"]);
 
-    BOOST_CHECK_EQUAL(&obj[15], &UniValue::NullUniValue);
+    BOOST_CHECK_EQUAL(&obj[15], &UniValue::Null);
 
     BOOST_CHECK_EQUAL(obj.locate("age"), &obj["age"]);
     BOOST_CHECK_EQUAL(obj.locate("first"), &obj["first"]);
@@ -667,8 +667,8 @@ BOOST_AUTO_TEST_CASE(univalue_object)
     BOOST_CHECK(obj.empty());
     BOOST_CHECK_EQUAL(obj.size(), 0);
     BOOST_CHECK_EQUAL(obj.getType(), UniValue::VNULL);
-    BOOST_CHECK_EQUAL(&obj[0], &UniValue::NullUniValue);
-    BOOST_CHECK_EQUAL(&obj["age"], &UniValue::NullUniValue);
+    BOOST_CHECK_EQUAL(&obj[0], &UniValue::Null);
+    BOOST_CHECK_EQUAL(&obj["age"], &UniValue::Null);
     BOOST_CHECK_EQUAL(obj.locate("age"), nullptr);
     BOOST_CHECK_THROW(obj.at(0), std::domain_error);
     BOOST_CHECK_THROW(obj.at("age"), std::domain_error);
@@ -690,7 +690,7 @@ BOOST_AUTO_TEST_CASE(univalue_object)
 
     // test front() / back() as well as operator==
     UniValue arr{UniValue::VNUM}; // this is intentional.
-    BOOST_CHECK_EQUAL(&arr.front(), &UniValue::NullUniValue); // should return the NullUniValue if !array
+    BOOST_CHECK_EQUAL(&arr.front(), &UniValue::Null); // should return the UniValue::Null if !array
     UniValue::Array vals;
     vals.emplace_back("foo");
     vals.emplace_back("bar");
