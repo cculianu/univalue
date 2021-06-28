@@ -6,18 +6,18 @@
 #ifdef NDEBUG
 #undef NDEBUG /* ensure assert() does something */
 #endif
+
+#include "univalue.h"
+
 #include <cassert>
 #include <clocale>
 #include <cstdint>
 #include <iostream>
 #include <limits>
 #include <locale>
-#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include "univalue.h"
 
 #define BOOST_FIXTURE_TEST_SUITE(a, b)
 #define BOOST_AUTO_TEST_CASE(funcName) void funcName()

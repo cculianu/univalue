@@ -5,6 +5,9 @@
 #ifdef NDEBUG
 #undef NDEBUG /* ensure assert() does something */
 #endif
+
+#include "univalue.h"
+
 #include <array>
 #include <cassert>
 #include <cstdlib>
@@ -13,7 +16,6 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-#include "univalue.h"
 
 #ifndef JSON_TEST_SRC
 #error JSON_TEST_SRC must point to test source directory
