@@ -1,0 +1,15 @@
+[
+    [
+        "Bitcoin Core",
+        "Bitcoin ABC",
+        "Bitcoin Cash Node"
+    ],
+    "Bitcoin Classic",
+    "Bitcoin Unlimited",
+    "Bitcoin XT",
+    {
+        "SPV": [
+            "Electron Cash"
+        ]
+    }
+]
