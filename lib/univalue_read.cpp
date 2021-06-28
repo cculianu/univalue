@@ -1,11 +1,13 @@
 // Copyright 2014 BitPay Inc.
 // Copyright (c) 2020-2021 The Bitcoin developers
+// Copyright (c) 2021 Calin A. Culianu <calin.culianu@gmail.com>
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://opensource.org/licenses/mit-license.php.
 
 #include "univalue.h"
 #include "univalue_internal.h"
 
+#include <cassert>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -69,10 +71,7 @@ inline constexpr std::optional<unsigned> hatoui(const char*& buffer) noexcept
 class JSONUTF8StringFilter
 {
 public:
-    explicit JSONUTF8StringFilter(std::string &s):
-        str(s), is_valid(true), codepoint(0), state(0), surpair(0)
-    {
-    }
+    explicit JSONUTF8StringFilter(std::string &s) : str(s) {}
     // Write single 8-bit char (may be part of UTF-8 sequence)
     void push_back(unsigned char ch)
     {
@@ -135,10 +134,10 @@ public:
     }
 private:
     std::string &str;
-    bool is_valid;
+    bool is_valid = true;
     // Current UTF-8 decoding state
-    unsigned int codepoint;
-    int state; // Top bit to be filled in for next UTF-8 byte, or 0
+    unsigned int codepoint = 0;
+    int state = 0; // Top bit to be filled in for next UTF-8 byte, or 0
 
     // Keep track of the following state to handle the following section of
     // RFC4627:
@@ -150,7 +149,7 @@ private:
     //    "\uD834\uDD1E".
     //
     //  Two subsequent \u.... may have to be replaced with one actual codepoint.
-    unsigned int surpair; // First half of open UTF-16 surrogate pair, or 0
+    unsigned int surpair = 0; // First half of open UTF-16 surrogate pair, or 0
 
     void append_codepoint(unsigned int codepoint_)
     {
@@ -336,19 +335,74 @@ jtokentype getJsonToken(std::string& tokenVal, const char*& buffer)
         }
 
     case '"': {
-        ++buffer;                                // skip "
+        constexpr size_t reserveSize = 0; // set to 0 to not pre-alloc anything
+        ++buffer;  // skip "
 
-        std::string valStr;
-        JSONUTF8StringFilter writer(valStr);
+        // First, try the fast path which doesn't use the (slow) JSONUTF8StringFilter.
+        // This is a common-case optimization: we optimistically scan to ensure string
+        // is a simple ascii string with no unicode and no escapes, and if so, return it.
+        // If we do encounter non-ascii or escapes, we accept the partial string into
+        // `tokenVal`, then we proceed to the slow path.  In most real-world JSON, the
+        // fast path below is the only path taken and is the common-case.
+        constexpr bool tryFastPath = true;
+        if constexpr (tryFastPath) {
+            enum class FastPath {
+                Processed, NotFullyProcessed, Error
+            };
+
+            static const auto FastPathParseSimpleString = [](const char *& raw) -> FastPath {
+                for (; *raw; ++raw) {
+                    const uint8_t ch = static_cast<uint8_t>(*raw);
+                    if (ch == '"') {
+                        // fast-path accept case: simple string end at " char
+                        return FastPath::Processed;
+                    } else if (ch == '\\') {
+                        // has escapes -- cannot process as simple string, must continue using slow path
+                        return FastPath::NotFullyProcessed;
+                    } else if (ch < 0x20) {
+                        // is not legal JSON because < 0x20
+                        return FastPath::Error;
+                    } else if (ch >= 0x80) {
+                        // has a funky unicode character.. must take slow path
+                        return FastPath::NotFullyProcessed;
+                    }
+                }
+                // premature string end
+                return FastPath::Error;
+            };
+            switch (const char * const begin = buffer; FastPathParseSimpleString(buffer /*pass-by-ref*/)) {
+            case FastPath::Processed:
+                // fast path taken -- the string had no embedded escapes or non-ascii characters, return
+                // early, set tokenVal, set consumed. Note: raw now points to trailing " char
+                assert(*buffer == '"');
+                tokenVal.assign(begin, buffer);
+                ++buffer; // consume trailing "
+                return JTOK_STRING;
+            case FastPath::NotFullyProcessed:
+                // we partially processed, put accepted chars into `tokenVal`
+                tokenVal.assign(begin, buffer);
+                break; // will take slow path below
+            case FastPath::Error:
+                // the fast path encountered premature string end or char < 0x20 -- abort early
+                return JTOK_ERR;
+            }
+        }
+        // -----
+        // Slow path -- scan 1 character at a time and process the chars thru JSONUTF8StringFilter
+        // -----
+        if constexpr (reserveSize > 0)
+            tokenVal.reserve(tokenVal.capacity() + reserveSize);
+        JSONUTF8StringFilter writer(tokenVal); // note: this filter object must *not* clear tokenVal in its c'tor
 
         for (;;) {
-            if (static_cast<unsigned char>(*buffer) < 0x20) {
+            if (static_cast<unsigned char>(*buffer) < 0x20)
                 return JTOK_ERR;
-            } else if (*buffer == '\\') {
-                switch (*++buffer) {  // skip backslash
-                case '"':  writer.push_back('\"'); ++buffer; break;
+
+            else if (*buffer == '\\') {
+                switch (*++buffer) {             // skip backslash, read then skip esc'd char
+                case '"':  writer.push_back('"'); ++buffer; break;
                 case '\\': writer.push_back('\\'); ++buffer; break;
-                case '/':  writer.push_back('/');  ++buffer; break;
+                case '/':  writer.push_back('/'); ++buffer; break;
                 case 'b':  writer.push_back('\b'); ++buffer; break;
                 case 'f':  writer.push_back('\f'); ++buffer; break;
                 case 'n':  writer.push_back('\n'); ++buffer; break;
@@ -361,25 +415,34 @@ jtokentype getJsonToken(std::string& tokenVal, const char*& buffer)
                     }
                     [[fallthrough]];
                 default:
-                    return JTOK_ERR;
-                }
-            } else if (*buffer == '"') {
+                    return JTOK_ERR; // unexpected escape or '\0' after '\' char or codepoint failure
+                } // switch
+
+            }
+
+            else if (*buffer == '"') {
                 ++buffer;                        // skip "
-                break;                                          // stop scanning
-            } else {
+                break;                           // stop scanning
+            }
+
+            else {
                 writer.push_back(*buffer++);
             }
         }
 
         if (!writer.finalize())
             return JTOK_ERR;
-        tokenVal = std::move(valStr);
+
+        if constexpr (reserveSize > 0)
+            tokenVal.shrink_to_fit();
+        // -- At this point `tokenVal` contains the entire accepted string from
+        // -- inside the enclosing quotes "", unescaped and UTF-8-processed.
         return JTOK_STRING;
         }
 
     default:
         return JTOK_ERR;
-    }
+    } // switch
 }
 
 } // end anonymous namespace
@@ -450,243 +513,263 @@ bool ParseDouble(const std::string& str, double *out)
 }
 } // namespace univalue_interanal
 
-const char* UniValue::read(const char* buffer)
+const char* UniValue::read(const char* buffer, const char** errpos)
 {
-    setNull();
-
-    enum expect_bits {
-        EXP_OBJ_NAME = (1U << 0),
-        EXP_COLON = (1U << 1),
-        EXP_ARR_VALUE = (1U << 2),
-        EXP_VALUE = (1U << 3),
-        EXP_NOT_VALUE = (1U << 4),
-    };
+    // wrapped nested function (we catch its return and possibly set errpos)
+    const char * const ret = [this, &buffer]() -> const char * {
+        setNull(); // clear this
+        enum expect_bits {
+            EXP_OBJ_NAME = (1U << 0),
+            EXP_COLON = (1U << 1),
+            EXP_ARR_VALUE = (1U << 2),
+            EXP_VALUE = (1U << 3),
+            EXP_NOT_VALUE = (1U << 4),
+        };
 #define expect(bit) (expectMask & (EXP_##bit))
 #define setExpect(bit) (expectMask |= EXP_##bit)
 #define clearExpect(bit) (expectMask &= ~EXP_##bit)
 
-    uint32_t expectMask = 0;
-    std::vector<UniValue*> stack;
+        uint32_t expectMask = 0;
+        std::vector<UniValue*> stack;
 
-    std::string tokenVal;
-    jtokentype tok = JTOK_NONE;
-    jtokentype last_tok = JTOK_NONE;
-    do {
-        last_tok = tok;
+        std::string tokenVal;
+        jtokentype tok = JTOK_NONE;
+        jtokentype last_tok = JTOK_NONE;
+        do {
+            last_tok = tok;
 
-        tok = getJsonToken(tokenVal, buffer);
-        if (tok == JTOK_NONE || tok == JTOK_ERR)
-            return nullptr;
-
-        bool isValueOpen = jsonTokenIsValue(tok) ||
-            tok == JTOK_OBJ_OPEN || tok == JTOK_ARR_OPEN;
-
-        if (expect(VALUE)) {
-            if (!isValueOpen)
-                return nullptr;
-            clearExpect(VALUE);
-
-        } else if (expect(ARR_VALUE)) {
-            bool isArrValue = isValueOpen || (tok == JTOK_ARR_CLOSE);
-            if (!isArrValue)
+            tok = getJsonToken(tokenVal, buffer);
+            if (tok == JTOK_NONE || tok == JTOK_ERR)
                 return nullptr;
 
-            clearExpect(ARR_VALUE);
+            bool isValueOpen = jsonTokenIsValue(tok) ||
+                tok == JTOK_OBJ_OPEN || tok == JTOK_ARR_OPEN;
 
-        } else if (expect(OBJ_NAME)) {
-            bool isObjName = (tok == JTOK_OBJ_CLOSE || tok == JTOK_STRING);
-            if (!isObjName)
+            if (expect(VALUE)) {
+                if (!isValueOpen)
+                    return nullptr;
+                clearExpect(VALUE);
+
+            } else if (expect(ARR_VALUE)) {
+                bool isArrValue = isValueOpen || (tok == JTOK_ARR_CLOSE);
+                if (!isArrValue)
+                    return nullptr;
+
+                clearExpect(ARR_VALUE);
+
+            } else if (expect(OBJ_NAME)) {
+                bool isObjName = (tok == JTOK_OBJ_CLOSE || tok == JTOK_STRING);
+                if (!isObjName)
+                    return nullptr;
+
+            } else if (expect(COLON)) {
+                if (tok != JTOK_COLON)
+                    return nullptr;
+                clearExpect(COLON);
+
+            } else if (!expect(COLON) && (tok == JTOK_COLON)) {
                 return nullptr;
-
-        } else if (expect(COLON)) {
-            if (tok != JTOK_COLON)
-                return nullptr;
-            clearExpect(COLON);
-
-        } else if (!expect(COLON) && (tok == JTOK_COLON)) {
-            return nullptr;
-        }
-
-        if (expect(NOT_VALUE)) {
-            if (isValueOpen)
-                return nullptr;
-            clearExpect(NOT_VALUE);
-        }
-
-        switch (tok) {
-
-        case JTOK_OBJ_OPEN:
-        case JTOK_ARR_OPEN: {
-            VType utyp = (tok == JTOK_OBJ_OPEN ? VOBJ : VARR);
-            if (!stack.size()) {
-                if (utyp == VOBJ)
-                    setObject();
-                else
-                    setArray();
-                stack.push_back(this);
-            } else {
-                UniValue *top = stack.back();
-                if (top->typ == VOBJ) {
-                    auto& value = top->entries.rbegin()->second;
-                    if (utyp == VOBJ)
-                        value.setObject();
-                    else
-                        value.setArray();
-                    stack.push_back(&value);
-                } else {
-                    top->values.emplace_back(utyp);
-                    stack.push_back(&*top->values.rbegin());
-                }
             }
 
-            if (stack.size() > MAX_JSON_DEPTH)
-                return nullptr;
-
-            if (utyp == VOBJ)
-                setExpect(OBJ_NAME);
-            else
-                setExpect(ARR_VALUE);
-            break;
+            if (expect(NOT_VALUE)) {
+                if (isValueOpen)
+                    return nullptr;
+                clearExpect(NOT_VALUE);
             }
 
-        case JTOK_OBJ_CLOSE:
-        case JTOK_ARR_CLOSE: {
-            if (!stack.size() || (last_tok == JTOK_COMMA))
-                return nullptr;
-
-            VType utyp = (tok == JTOK_OBJ_CLOSE ? VOBJ : VARR);
-            UniValue *top = stack.back();
-            if (utyp != top->getType())
-                return nullptr;
-
-            stack.pop_back();
-            clearExpect(OBJ_NAME);
-            setExpect(NOT_VALUE);
-            break;
-            }
-
-        case JTOK_COLON: {
-            if (!stack.size())
-                return nullptr;
-
-            UniValue *top = stack.back();
-            if (top->getType() != VOBJ)
-                return nullptr;
-
-            setExpect(VALUE);
-            break;
-            }
-
-        case JTOK_COMMA: {
-            if (!stack.size() ||
-                (last_tok == JTOK_COMMA) || (last_tok == JTOK_ARR_OPEN))
-                return nullptr;
-
-            UniValue *top = stack.back();
-            if (top->getType() == VOBJ)
-                setExpect(OBJ_NAME);
-            else
-                setExpect(ARR_VALUE);
-            break;
-            }
-
-        case JTOK_KW_NULL:
-        case JTOK_KW_TRUE:
-        case JTOK_KW_FALSE: {
-            UniValue tmpVal;
             switch (tok) {
-            case JTOK_KW_NULL:
-                // do nothing more
+
+            case JTOK_OBJ_OPEN:
+            case JTOK_ARR_OPEN: {
+                VType utyp = (tok == JTOK_OBJ_OPEN ? VOBJ : VARR);
+                if (!stack.size()) {
+                    if (utyp == VOBJ)
+                        setObject();
+                    else
+                        setArray();
+                    stack.push_back(this);
+                } else {
+                    UniValue *top = stack.back();
+                    if (top->typ == VOBJ) {
+                        auto& value = top->entries.rbegin()->second;
+                        if (utyp == VOBJ)
+                            value.setObject();
+                        else
+                            value.setArray();
+                        stack.push_back(&value);
+                    } else {
+                        top->values.emplace_back(utyp);
+                        stack.push_back(&*top->values.rbegin());
+                    }
+                }
+
+                if (stack.size() > MAX_JSON_DEPTH)
+                    return nullptr;
+
+                if (utyp == VOBJ)
+                    setExpect(OBJ_NAME);
+                else
+                    setExpect(ARR_VALUE);
                 break;
-            case JTOK_KW_TRUE:
-                tmpVal = true;
-                break;
-            case JTOK_KW_FALSE:
-                tmpVal = false;
-                break;
-            default: /* impossible */ break;
-            }
+                }
 
-            if (!stack.size()) {
-                *this = std::move(tmpVal);
-                break;
-            }
+            case JTOK_OBJ_CLOSE:
+            case JTOK_ARR_CLOSE: {
+                if (!stack.size() || (last_tok == JTOK_COMMA))
+                    return nullptr;
 
-            UniValue *top = stack.back();
-            if (top->typ == VOBJ) {
-                top->entries.rbegin()->second = std::move(tmpVal);
-            } else {
-                top->values.emplace_back(std::move(tmpVal));
-            }
-
-            setExpect(NOT_VALUE);
-            break;
-            }
-
-        case JTOK_NUMBER: {
-            UniValue tmpVal(VNUM, std::move(tokenVal));
-            if (!stack.size()) {
-                *this = std::move(tmpVal);
-                break;
-            }
-
-            UniValue *top = stack.back();
-            if (top->typ == VOBJ) {
-                top->entries.rbegin()->second = std::move(tmpVal);
-            } else {
-                top->values.emplace_back(std::move(tmpVal));
-            }
-
-            setExpect(NOT_VALUE);
-            break;
-            }
-
-        case JTOK_STRING: {
-            if (expect(OBJ_NAME)) {
+                VType utyp = (tok == JTOK_OBJ_CLOSE ? VOBJ : VARR);
                 UniValue *top = stack.back();
-                top->entries.emplace_back(std::piecewise_construct,
-                                          std::forward_as_tuple(std::move(tokenVal)),
-                                          std::forward_as_tuple());
+                if (utyp != top->getType())
+                    return nullptr;
+
+                stack.pop_back();
                 clearExpect(OBJ_NAME);
-                setExpect(COLON);
-            } else {
-                UniValue tmpVal(VSTR, std::move(tokenVal));
+                setExpect(NOT_VALUE);
+                break;
+                }
+
+            case JTOK_COLON: {
+                if (!stack.size())
+                    return nullptr;
+
+                UniValue *top = stack.back();
+                if (top->getType() != VOBJ)
+                    return nullptr;
+
+                setExpect(VALUE);
+                break;
+                }
+
+            case JTOK_COMMA: {
+                if (!stack.size() || (last_tok == JTOK_COMMA) || (last_tok == JTOK_ARR_OPEN))
+                    return nullptr;
+
+                UniValue *top = stack.back();
+                if (top->getType() == VOBJ)
+                    setExpect(OBJ_NAME);
+                else
+                    setExpect(ARR_VALUE);
+                break;
+                }
+
+            case JTOK_KW_NULL:
+            case JTOK_KW_TRUE:
+            case JTOK_KW_FALSE: {
+                UniValue tmpVal;
+                switch (tok) {
+                case JTOK_KW_NULL:
+                    // do nothing more
+                    break;
+                case JTOK_KW_TRUE:
+                    tmpVal = true;
+                    break;
+                case JTOK_KW_FALSE:
+                    tmpVal = false;
+                    break;
+                default: /* impossible */ break;
+                }
+
                 if (!stack.size()) {
                     *this = std::move(tmpVal);
                     break;
                 }
+
                 UniValue *top = stack.back();
                 if (top->typ == VOBJ) {
                     top->entries.rbegin()->second = std::move(tmpVal);
                 } else {
                     top->values.emplace_back(std::move(tmpVal));
                 }
-            }
 
-            setExpect(NOT_VALUE);
-            break;
-            }
+                setExpect(NOT_VALUE);
+                break;
+                }
 
-        default:
+            case JTOK_NUMBER: {
+                UniValue tmpVal(VNUM, std::move(tokenVal));
+                if (!stack.size()) {
+                    *this = std::move(tmpVal);
+                    break;
+                }
+
+                UniValue *top = stack.back();
+                if (top->typ == VOBJ) {
+                    top->entries.rbegin()->second = std::move(tmpVal);
+                } else {
+                    top->values.emplace_back(std::move(tmpVal));
+                }
+
+                setExpect(NOT_VALUE);
+                break;
+                }
+
+            case JTOK_STRING: {
+                if (expect(OBJ_NAME)) {
+                    UniValue *top = stack.back();
+                    top->entries.emplace_back(std::piecewise_construct,
+                                              std::forward_as_tuple(std::move(tokenVal)),
+                                              std::forward_as_tuple());
+                    clearExpect(OBJ_NAME);
+                    setExpect(COLON);
+                } else {
+                    UniValue tmpVal(VSTR, std::move(tokenVal));
+                    if (!stack.size()) {
+                        *this = std::move(tmpVal);
+                        break;
+                    }
+                    UniValue *top = stack.back();
+                    if (top->typ == VOBJ) {
+                        top->entries.rbegin()->second = std::move(tmpVal);
+                    } else {
+                        top->values.emplace_back(std::move(tmpVal));
+                    }
+                }
+
+                setExpect(NOT_VALUE);
+                break;
+                }
+
+            default:
+                return nullptr;
+            }
+        } while (!stack.empty());
+
+        /* Check that nothing follows the initial construct (parsed above).  */
+        tok = getJsonToken(tokenVal, buffer);
+        if (tok != JTOK_NONE) {
             return nullptr;
         }
-    } while (!stack.empty());
 
-    /* Check that nothing follows the initial construct (parsed above).  */
-    tok = getJsonToken(tokenVal, buffer);
-    if (tok != JTOK_NONE)
-        return nullptr;
-
-    return buffer;
+        return buffer;
 #undef expect
 #undef setExpect
 #undef clearExpect
+    }();
+
+    // if caller specfied errpos pointer, set it
+    if (errpos) {
+        *errpos = ret == nullptr ? buffer : nullptr;
+    }
+
+    return ret;
 }
 
-bool UniValue::read(const std::string& raw)
+bool UniValue::read(const std::string& raw, std::string::size_type *errpos)
 {
     // JSON containing unescaped NUL characters is invalid.
     // std::string is NUL-terminated but may also contain NULs within its size.
     // So read until the first NUL character, and then verify that this is indeed the terminating NUL.
-    return read(raw.data()) == raw.data() + raw.size();
+    const char* errptr;
+    const char* const res = read(raw.data(), &errptr);
+    if (errpos) *errpos = errptr ? errptr - raw.data() : std::string::npos;
+    if (res == raw.data() + raw.size()) {
+        // parsing consumed entire string (no embedded NULs), success
+        return true;
+    } else if (!errptr && errpos && res) {
+        // Embedded NUL, but no parse error, however parsing is incomplete because it did not consume the entire string.
+        // Update errpos accordingly to point to parse end.
+        *errpos = res - raw.data();
+    }
+    return false;
 }

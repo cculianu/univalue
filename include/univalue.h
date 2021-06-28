@@ -1,6 +1,7 @@
 // Copyright 2014 BitPay Inc.
 // Copyright 2015 Bitcoin Core Developers
 // Copyright (c) 2020-2021 The Bitcoin developers
+// Copyright (c) 2021 Calin A. Culianu <calin.culianu@gmail.com>
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://opensource.org/licenses/mit-license.php.
 
@@ -778,9 +779,12 @@ public:
      * (If the return value is cast to bool, the resulting boolean indicates success.)
      *
      * Compatible with the upstream UniValue API, although upstream simply returns a bool.
+     *
+     * Optional arg errpos: If specified, the pointer will be set to point to where parsing failed in the input string.
+     * The pointer is only set to a valid value on failure, otherwise it is set to nullptr.
      */
     [[nodiscard]]
-    const char* read(const char* raw);
+    const char* read(const char* raw, const char **errpos = nullptr);
 
     /**
      * Parses a JSON std::string.
@@ -789,9 +793,12 @@ public:
      * If invalid JSON, false is returned, and the object is in a valid but unspecified state.
      *
      * Compatible with the upstream UniValue API.
+     *
+     * Optional arg errpos: If specified, the pointer will be set to the position where parsing failed in the input string.
+     * The pointer is only set to the position on failure, otherwise it is set to std::string::npos.
      */
     [[nodiscard]]
-    bool read(const std::string& raw);
+    bool read(const std::string& raw, std::string::size_type *errpos = nullptr);
 
 private:
     UniValue::VType typ = VNULL;

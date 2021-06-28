@@ -42,7 +42,7 @@ int main()
         } while (nread > 0 && !std::feof(stdin) && !std::ferror(stdin));
     }
     const auto t1 = GetTimeMicros();
-    if (val.read(str)) {
+    if (std::string::size_type errpos; val.read(str, &errpos)) {
         const auto t2 = GetTimeMicros();
         auto outStr = UniValue::stringify(val, 1 /* prettyIndent */);
         const auto t3 = GetTimeMicros();
@@ -54,7 +54,7 @@ int main()
                   << std::endl;
         return 0;
     } else {
-        std::cerr << "JSON Parse Error." << std::endl;
+        std::cerr << "JSON Parse Error at position: " << errpos << ": " << str.substr(errpos, 80) << " ..." << std::endl;
         return 1;
     }
 }
