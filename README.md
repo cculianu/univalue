@@ -17,7 +17,7 @@ Unlike the [Bitcoin Core fork](https://github.com/bitcoin-core/univalue/), this 
 #### How this library differs from its ancestor UniValue libaries:
 
 - Optimizations made to parsing (about 1.7x faster than the BCHN library, and several times faster than the Bitcoin Core library)
-- Optimizations made to memory consumption (each UniValue nested instance eats onluy 32 bytes if memory, as opposed to 80 or more bytes in the other implementations)
+- Optimizations made to memory consumption (each UniValue nested instance eats only 32 bytes of memory, as opposed to 80 or more bytes in the other implementations)
 - Various small nits and improvements to code quality
 
 ## License
