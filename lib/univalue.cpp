@@ -593,7 +593,7 @@ UniValue& UniValue::operator=(const UniValue &o) {
     }
     return *this;
 }
-UniValue& UniValue::operator=(UniValue &&o) noexcept {
+UniValue& UniValue::operator=(UniValue &&o) {
     if (typ != o.typ || !constructed) {
         destruct();
         typ = o.typ;

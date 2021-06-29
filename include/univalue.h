@@ -499,7 +499,7 @@ public:
     explicit UniValue(const UniValue& o);
     UniValue(UniValue&& o) noexcept;
     UniValue& operator=(const UniValue &o);
-    UniValue& operator=(UniValue &&o) noexcept;
+    UniValue& operator=(UniValue &&o);
 
     // Misc. convenience constructors
     UniValue(bool val_) noexcept : typ(val_ ? VTRUE : VFALSE) {}
