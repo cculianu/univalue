@@ -7,6 +7,7 @@
 
 #include "univalue.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <iomanip>
@@ -47,11 +48,10 @@ int main()
         auto outStr = UniValue::stringify(val, 1 /* prettyIndent */);
         const auto t3 = GetTimeMicros();
         std::cout << outStr << std::endl;
-        std::cerr << "size: " << std::fixed << std::setprecision(3) << (outStr.size()/1e6) << " MB"
-                  << ", read: " << ((t1-t0)/1e3) << " msec"
-                  << ", parse: " << ((t2-t1)/1e3) << " msec"
-                  << ", stringify: " << ((t3-t2)/1e3) << " msec"
-                  << std::endl;
+        std::cerr << "size: " << std::fixed << std::setprecision(3) << (outStr.size()/1e6) << " MB" << std::endl
+                  << "  - read: " << ((t1-t0)/1e3) << " msec (" << ((outStr.size()/1e6) / std::max((t1-t0)/1e6, 1e-6)) << " MB/sec)" << std::endl
+                  << "  - parse: " << ((t2-t1)/1e3) << " msec (" << ((outStr.size()/1e6) / std::max((t2-t1)/1e6, 1e-6)) << " MB/sec)" << std::endl
+                  << "  - stringify: " << ((t3-t2)/1e3) << " msec (" << ((outStr.size()/1e6) / std::max((t3-t2)/1e6, 1e-6)) << " MB/sec)" << std::endl;
         return 0;
     } else {
         std::cerr << "JSON Parse Error at position: " << errpos << ": " << str.substr(errpos, 80) << " ..." << std::endl;
