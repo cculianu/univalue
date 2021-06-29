@@ -23,6 +23,16 @@
 #include "univalue.h"
 #include "univalue_internal.h"
 
+namespace {
+// Helper class to run a functor at scope end
+template <typename Func>
+struct Defer {
+    Func func;
+    Defer(Func && f) noexcept : func(std::move(f)) {}
+    ~Defer() { func(); }
+};
+}
+
 /* static */ const UniValue UniValue::Null{VNULL};
 /* static */ const std::string UniValue::emptyVal{};
 
@@ -440,53 +450,54 @@ void UniValue::construct() noexcept {
 }
 void UniValue::construct(std::string &&s) noexcept {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VNUM || typ == VSTR) {
         new (&u.val) std::string(std::move(s));
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::construct(const std::string &s) {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VNUM || typ == VSTR) {
         new (&u.val) std::string(s);
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::construct(Object &&o) noexcept {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VOBJ) {
         new (&u.entries) Object(std::move(o));
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::construct(const Object &o) {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VOBJ) {
         new (&u.entries) Object(o);
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::construct(Array &&a) noexcept {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VARR) {
         new (&u.values) Array(std::move(a));
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::construct(const Array &a) {
     assert(!constructed);
+    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
     if (typ == VARR) {
         new (&u.values) Array(a);
         constructed = true;
-    } else
-        typ = VNULL; // refuse to proceed
+    }
 }
 void UniValue::destruct() {
+    Defer d{[&]{ typ = VNULL; constructed = false; }}; // clean-up on scope end
     if (constructed) {
         switch (typ) {
         case UniValue::VNUM:
@@ -504,20 +515,21 @@ void UniValue::destruct() {
             break;
         }
     }
-    typ = VNULL;
-    constructed = false;
 }
 
 UniValue::UniValue(const UniValue& o) : typ(o.typ) {
     switch (typ) {
     case VNUM:
     case VSTR:
+        assert(o.constructed);
         construct(o.u.val);
         break;
     case VOBJ:
+        assert(o.constructed);
         construct(o.u.entries);
         break;
     case VARR:
+        assert(o.constructed);
         construct(o.u.values);
         break;
     default: break;
@@ -527,30 +539,36 @@ UniValue::UniValue(UniValue&& o) noexcept : typ(o.typ) {
     switch (typ) {
     case VNUM:
     case VSTR:
+        assert(o.constructed);
         construct(std::move(o.u.val));
         break;
     case VOBJ:
+        assert(o.constructed);
         construct(std::move(o.u.entries));
         break;
     case VARR:
+        assert(o.constructed);
         construct(std::move(o.u.values));
         break;
     default: break;
     }
 }
 UniValue& UniValue::operator=(const UniValue &o) {
-    if (typ != o.typ) {
+    if (typ != o.typ || !constructed) {
         destruct();
         typ = o.typ;
         switch (typ) {
         case VNUM:
         case VSTR:
+            assert(o.constructed);
             construct(o.u.val);
             break;
         case VOBJ:
+            assert(o.constructed);
             construct(o.u.entries);
             break;
         case VARR:
+            assert(o.constructed);
             construct(o.u.values);
             break;
         default: break;
@@ -559,12 +577,15 @@ UniValue& UniValue::operator=(const UniValue &o) {
         switch (typ) {
         case VNUM:
         case VSTR:
+            assert(o.constructed);
             u.val = o.u.val;
             break;
         case VOBJ:
+            assert(o.constructed);
             u.entries = o.u.entries;
             break;
         case VARR:
+            assert(o.constructed);
             u.values = o.u.values;
             break;
         default: break;
@@ -573,18 +594,21 @@ UniValue& UniValue::operator=(const UniValue &o) {
     return *this;
 }
 UniValue& UniValue::operator=(UniValue &&o) noexcept {
-    if (typ != o.typ) {
+    if (typ != o.typ || !constructed) {
         destruct();
         typ = o.typ;
         switch (typ) {
         case VNUM:
         case VSTR:
+            assert(o.constructed);
             construct(std::move(o.u.val));
             break;
         case VOBJ:
+            assert(o.constructed);
             construct(std::move(o.u.entries));
             break;
         case VARR:
+            assert(o.constructed);
             construct(std::move(o.u.values));
             break;
         default: break;
@@ -593,12 +617,15 @@ UniValue& UniValue::operator=(UniValue &&o) noexcept {
         switch (typ) {
         case VNUM:
         case VSTR:
+            assert(o.constructed);
             u.val = std::move(o.u.val);
             break;
         case VOBJ:
+            assert(o.constructed);
             u.entries = std::move(o.u.entries);
             break;
         case VARR:
+            assert(o.constructed);
             u.values = std::move(o.u.values);
             break;
         default: break;
