@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -62,6 +63,7 @@ public:
         using const_reverse_iterator = Vector::const_reverse_iterator;
 
         Object() noexcept = default;
+        Object(std::initializer_list<value_type> il) : vector(il) {}
         explicit Object(const Object&) = default;
         Object(Object&&) noexcept = default;
         Object& operator=(const Object&) = default;
@@ -304,6 +306,7 @@ public:
         using const_reverse_iterator = Vector::const_reverse_iterator;
 
         Array() noexcept = default;
+        Array(std::initializer_list<value_type> il) : vector(il) {}
         explicit Array(const Array&) = default;
         Array(Array&&) noexcept = default;
         Array& operator=(const Array&) = default;

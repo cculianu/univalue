@@ -48,5 +48,10 @@ if(BUILD_TESTS)
     # This testing tool should not be run automatically since it expects input on stdin
     add_executable(json_test test/test_json.cpp)
     target_link_libraries(json_test univalue)
+
+    # The basic example we provide. This should not be run automatically either.
+    add_executable(basic_example examples/basic_example.cpp)
+    target_link_libraries(basic_example univalue)
+
 endif(BUILD_TESTS)
 

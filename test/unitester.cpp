@@ -136,6 +136,8 @@ const char *filenames[] = {
         "fail51.json",  // 1.3e+ is not valid (must have a number after the "e+" part)
         "fail52.json",  // reject -[non-digit]
         "pass1.json",
+        "pass2.json",
+        "pass3.json",
         "round1.json",  // round-trip test
         "round2.json",  // unicode
         "round3.json",  // bare string
