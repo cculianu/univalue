@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -936,6 +937,12 @@ public:
     [[nodiscard]]
     static std::string typeName(int t);
 
+    /**
+     * @brief Version - query the library version
+     * @return A tuple of library (major,minor,revision)
+     */
+    [[nodiscard]]
+    static std::tuple<int, int, int> Version();
 
     /// Rerpresents the "null" UniValue. A reference to this singleton is returned from some methods to indicate
     /// not found, etc. Its state is identical to a default-constructed UniValue instance.
