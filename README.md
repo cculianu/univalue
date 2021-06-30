@@ -8,7 +8,7 @@ Supports parsing and serializing, as well as modeling a JSON document.  The cent
 
 The below is taken from [basic_example.cpp](examples/basic_example.cpp).
 
-### Building an object
+### Building an Object
 ```c++
 // An example of how to build an object
 UniValue uv;
@@ -17,7 +17,7 @@ obj.emplace_back("this is a JSON object", "it's pretty neat");
 obj.emplace_back("akey", 3.14);
 obj.emplace_back("theanswer", 42);
 obj.emplace_back("thequestion", false);
-obj.emplace_back("alist", UniValue::Array{{ 1, 2, 3, 4, "hahaha"}});
+obj.emplace_back("alist", UniValue::Array{{ 1, 2, 3, 4, "hahaha" }});
 
 // the below stringifies or serializes the constructed object
 std::cout << UniValue::stringify(uv, 4 /* pretty indent 4 spaces */) << std::endl;
