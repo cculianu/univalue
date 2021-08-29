@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1.0)
 
-project(univalue VERSION 2.0.1 LANGUAGES CXX)
+project(univalue VERSION 2.0.2 LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -28,14 +28,16 @@ target_include_directories(univalue
 )
 
 option(BUILD_TESTS "Build tests" ON)
+option(BUILD_BENCH "Build benchmark test" ON)
+
 
 if(BUILD_TESTS)
     add_custom_target(check)
     function(create_univalue_test NAME FILES)
         add_executable(${NAME} ${FILES})
         target_link_libraries(${NAME} univalue)
-	add_custom_target(check-${NAME} ${NAME})
-	add_dependencies(check check-${NAME})
+        add_custom_target(check-${NAME} ${NAME})
+        add_dependencies(check check-${NAME})
     endfunction()
 
     create_univalue_test(unitester_test test/unitester.cpp)
@@ -54,4 +56,27 @@ if(BUILD_TESTS)
     target_link_libraries(basic_example univalue)
 
 endif(BUILD_TESTS)
+
+
+if(BUILD_BENCH)
+    add_executable(bench_univalue bench/bench_univalue.cpp)
+    target_link_libraries(bench_univalue PRIVATE univalue)
+
+    # optionally, use nlohmann
+    find_package(nlohmann_json)
+    if(nlohmann_json_FOUND)
+        target_link_libraries(bench_univalue PRIVATE nlohmann_json::nlohmann_json)
+    else()
+        message("nlohmann::json was not found, proceeding anyway since it is not required.")
+        message("However, if you wish to use the \"bench\" target, please install it in")
+        message("order to get a comparitive benchmark versus that library.")
+        message("")
+    endif()
+
+    file(GLOB json_files LIST_DIRECTORIES false "${PROJECT_SOURCE_DIR}/bench/*.json")
+    add_custom_target(bench
+        COMMAND bench_univalue ${json_files}
+        DEPENDS bench_univalue
+    )
+endif(BUILD_BENCH)
 

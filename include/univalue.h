@@ -942,7 +942,7 @@ public:
      * @return A tuple of library (major,minor,revision)
      */
     [[nodiscard]]
-    static std::tuple<int, int, int> Version();
+    static std::tuple<int, int, int> version();
 
     /// Rerpresents the "null" UniValue. A reference to this singleton is returned from some methods to indicate
     /// not found, etc. Its state is identical to a default-constructed UniValue instance.
