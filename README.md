@@ -83,7 +83,24 @@ for (const auto & [key, value] : obj) {
 ## Summary of Differences from other JSON Libraries
 
 - Faster than many implementations.  For example, faster than [nlohmann](https://github.com/nlohmann/json) for both parsing and for stringification (roughly 2x faster in many cases).
-  - You can run the `json_test` binary from this library on the [nlohmann bench json files](https://github.com/nlohmann/json_test_data) to convince yourself of this.
+  - Install `nlohmann::json` and use the `bench` build target to convince yourself of this.
+  - Example bench on my 2019 MacBook Pro:
+```
+Running test on "../bench/semanticscholar-corpus.json" ...
+Read 8593351 bytes in 6.723 msec
+
+--- UniValue lib ---
+Parsing and re-serializing 10 times ...
+Elapsed (msec) - 967.757
+Parse (msec) - median: 48.598, avg: 49.845, best: 46.742, worst: 57.972
+Serialize (msec) - median: 32.081, avg: 32.789, best: 31.280, worst: 40.098
+
+--- nlohmann::json lib ---
+Parsing and re-serializing 10 times ...
+Elapsed (msec) - 1860.147
+Parse (msec) - median: 91.739, avg: 96.404, best: 89.113, worst: 128.864
+Serialize (msec) - median: 45.042, avg: 45.768, best: 44.437, worst: 51.345
+```
 - Easier to use, perhaps?
   - The entire implementation is wrapped by a single class, called `UniValue` which captures any JSON data item, as well as the whole document, with a single abstraction.
 - "Faithful" representation of input JSON.
