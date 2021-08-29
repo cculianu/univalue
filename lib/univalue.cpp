@@ -37,7 +37,7 @@ struct Defer {
 /* static */ const std::string UniValue::emptyVal{};
 
 /// Note: Update this manually, for now, when doing a new release.
-/* static */ std::tuple<int, int, int> UniValue::version() { return {2, 0, 2}; }
+/* static */ std::tuple<int, int, int> UniValue::version() { return {2, 1, 0}; }
 
 const UniValue& UniValue::Object::operator[](std::string_view key) const noexcept
 {

@@ -25,7 +25,6 @@ public:
      * Can be used with is().
      *
      * Numeric values differ from the upstream UniValue API.
-     * VFALSE and VTRUE are Bitcoin Cash Node extensions of the UniValue API (replacing VBOOL).
      */
     enum VType {
         VNULL  = 1 << 0,
@@ -40,8 +39,6 @@ public:
     /**
      * Type bitmask shorthand for VFALSE|VTRUE.
      * Can be used with is().
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     constexpr static auto MBOOL = VFALSE | VTRUE;
 
@@ -637,8 +634,6 @@ public:
      * Two objects/arrays are not considered equal if elements are ordered differently.
      *
      * Complexity: linear in the amount of data to compare.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     bool operator==(const UniValue& other) const noexcept;
@@ -648,8 +643,6 @@ public:
      * Two objects/arrays are not considered equal if elements are ordered differently.
      *
      * Complexity: linear in the amount of data to compare.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     bool operator!=(const UniValue& other) const noexcept { return !(*this == other); }
@@ -664,8 +657,6 @@ public:
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
      * Complexity: constant.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     const UniValue& front() const noexcept;
@@ -680,8 +671,6 @@ public:
      * The returned reference follows the iterator invalidation rules of the underlying vector.
      *
      * Complexity: constant.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     const UniValue& back() const noexcept;
@@ -694,8 +683,6 @@ public:
      * The returned pointer follows the iterator invalidation rules of the underlying vector.
      *
      * Complexity: linear in the number of elements.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      *
      * If you want to treat missing keys as null values, please use the [] operator instead.
      * If you want an exception thrown on missing keys, please use at() instead.
@@ -714,8 +701,6 @@ public:
      *
      * Complexity: linear in number of elements.
      *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
-     *
      * If you don't want an exception thrown, please use locate() or the [] operator instead.
      */
     const UniValue& at(std::string_view key) const;
@@ -732,8 +717,6 @@ public:
      *
      * Complexity: constant.
      *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
-     *
      * If you don't want an exception thrown, please use the [] operator instead.
      */
     const UniValue& at(size_type index) const;
@@ -744,8 +727,6 @@ public:
      * If a type bitmask is given, returns whether the value's type is any of the given types.
      *
      * Complexity: constant.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     constexpr bool is(int types) const noexcept { return typ & types; }
@@ -770,20 +751,23 @@ public:
     /**
      * Returns the JSON string representation of the provided value.
      *
-     * The type of value can be the generic UniValue,
-     * or a more specific type: UniValue::Object, UniValue::Array, or std::string.
+     * @param value - The type of `value` can be the generic UniValue, or a more
+     * specific type: UniValue::Object, UniValue::Array, or std::string.
      *
-     * The optional argument indicates the number of spaces for indentation in pretty formatting.
-     * Use 0 (default) to disable pretty formatting and use compact formatting instead.
-     * Note that pretty formatting only affects arrays and objects.
+     * @param prettyIndent - This optional argument indicates the number of spaces for
+     * indentation in pretty formatting. Use 0 (default) to disable pretty formatting
+     * and use compact formatting instead. Note that pretty formatting only affects
+     * arrays and objects.
      *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
+     * @param reserve - This optional argument is for performance. If you know ahead of
+     * time approximately how large the serialized JSON will be, preallocating `reserve`
+     * bytes to the returned string may save CPU cycles.
      */
     template<typename Value>
-    static std::string stringify(const Value& value, unsigned int prettyIndent = 0) {
+    static std::string stringify(const Value& value, unsigned int prettyIndent = 0, std::size_t reserve = 1024) {
         std::string s; // we do it this way for RVO to work on all compilers
         Stream ss{s};
-        s.reserve(1024);
+        if (reserve) s.reserve(reserve);
         stringify(ss, value, prettyIndent, 0);
         return s;
     }
@@ -878,7 +862,6 @@ public:
      * Complexity: constant.
      *
      * Compatible with the upstream UniValue API.
-     * Non-const overload is a Bitcoin Cash Node extension.
      */
     const std::string& get_str() const;
     std::string& get_str();
@@ -894,7 +877,6 @@ public:
      *
      * Compatible with the upstream UniValue API,
      * but with a different return type.
-     * Non-const overload is a Bitcoin Cash Node extension.
      */
     const Object& get_obj() const;
     Object& get_obj();
@@ -910,7 +892,6 @@ public:
      *
      * Compatible with the upstream UniValue API,
      * but with a different return type.
-     * Non-const overload is a Bitcoin Cash Node extension.
      */
     const Array& get_array() const;
     Array& get_array();
@@ -931,8 +912,6 @@ public:
     /**
      * Returns the human-readable name of the composite JSON value type bitmask.
      * Argument must be a bitmask consisting of one or more UniValue::VType elements.
-     *
-     * This is a Bitcoin Cash Node extension of the UniValue API.
      */
     [[nodiscard]]
     static std::string typeName(int t);

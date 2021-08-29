@@ -143,7 +143,7 @@ std::string Tic::format(int64_t nsec) {
 bool runbench_univalue(const size_t N, const std::string &jdata)
 {
     assert(N > 0);
-    std::cout << "Parsing and re-serializeing " << N << " times ...\n";
+    std::cout << "Parsing and re-serializing " << N << " times ...\n";
     std::vector<Tic> parseTimes, serializeTimes;
     parseTimes.reserve(N); serializeTimes.reserve(N);
     std::vector<std::string> strings;
@@ -160,7 +160,7 @@ bool runbench_univalue(const size_t N, const std::string &jdata)
         parseTimes.back().fin(); // freeze timer
 
         serializeTimes.emplace_back(); // start timer
-        strings.push_back( UniValue::stringify(uv, 4) );
+        strings.push_back( UniValue::stringify(uv, 4, jdata.size()) );
         serializeTimes.back().fin(); // freeze timer
 
         // check strings -- this is to ensure uv.stringify() is not a no-op above
@@ -198,7 +198,7 @@ bool runbench_univalue(const size_t N, const std::string &jdata)
 void runbench_nlohmann(const size_t N, const std::string &jdata)
 {
     assert(N > 0);
-    std::cout << "Parsing and re-serializeing " << N << " times ...\n";
+    std::cout << "Parsing and re-serializing " << N << " times ...\n";
     std::vector<Tic> parseTimes, serializeTimes;
     parseTimes.reserve(N); serializeTimes.reserve(N);
     std::vector<std::string> strings;
@@ -245,12 +245,6 @@ void runbench_nlohmann(const size_t N, const std::string &jdata)
 
 bool runbench_file(const std::string &path)
 {
-    const std::string filename = [&]{
-        if (auto pos = filename.find_last_of("/\\") != filename.npos)
-            return filename.substr(pos + 1);
-        return filename;
-    }();
-
     std::string jdata;
     {
         const Tic tread0;
