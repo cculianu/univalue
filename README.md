@@ -102,7 +102,7 @@ Parse (msec) - median: 91.739, avg: 96.404, best: 89.113, worst: 128.864
 Serialize (msec) - median: 45.042, avg: 45.768, best: 44.437, worst: 51.345
 ```
 - Easier to use, perhaps?
-  - The entire implementation is wrapped by a single class, called `UniValue` which captures any JSON data item, as well as the whole document, with a single abstraction. Compare this to [RapidJSON](https://rapidjson.org/) which is very fast as well, but arguably more difficult to use.
+  - The entire implementation is wrapped by a single class, called `UniValue` which captures any JSON data item, as well as the whole document, with a single abstraction. Compare this to some of the other fast libraries out there (which shall remain nameless here), some of which are arguably more difficult to use.
 - "Faithful" representation of input JSON.
   - Stores the read JSON faithfully without "reinterpreting" anything.  For example if the input document had a JSON numeric `1.000000`, this library will re-serialize it verbatim as `1.000000` rather than `1.0` or `1`.
    - The reason for this: when this library parses JSON numerics, they are internally stored as string fragments (validation is applied, however, to ensure that invalid numerics cannot make it in).
