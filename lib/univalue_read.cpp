@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -459,49 +461,63 @@ std::optional<std::string> validateAndStripNumStr(const char* s)
     return ret;
 }
 namespace {
+template <bool chkEmbNul, bool disallowNegative = false>
 bool ParsePrechecks(const std::string& str) noexcept
 {
-    if (str.empty()) // No empty string allowed
+    auto const size = str.size();
+    if (size == 0) // No empty string allowed
         return false;
-    if (json_isspace(str[0]) || json_isspace(str[str.size()-1])) // No padding allowed
+    if (json_isspace(str[0]) || (size > 1 && json_isspace(str[size-1]))) // No padding allowed
         return false;
-    if (str.size() != std::strlen(str.c_str())) // No embedded NUL characters allowed
-        return false;
+    if constexpr (disallowNegative) {
+        // disallow negative, but allow -0
+        if (str[0] == '-' && (str.size() != 2 || str[1] != '0')) {
+            return false;
+        }
+    }
+    if constexpr (chkEmbNul) {
+        if (size != std::strlen(str.c_str())) // No embedded NUL characters allowed
+            return false;
+    }
     return true;
 }
-} // namespace
-bool ParseInt32(const std::string& str, int32_t *out) noexcept
+template <typename Integer>
+std::enable_if_t<std::is_integral_v<Integer>, bool>
+/*bool*/ GenericParseInt(const std::string& str, Integer *out)
 {
-    if (!ParsePrechecks(str))
+    static_assert (sizeof(Integer) > 1, "Disallow this function operating on bool, char, etc");
+    constexpr bool is_signed = std::is_signed_v<Integer>;
+    using LongerInt = std::conditional_t<is_signed, long long, unsigned long long>;
+    static_assert (sizeof(LongerInt) >= sizeof(Integer));
+    if (!ParsePrechecks<false, !is_signed>(str))
         return false;
-    char *endp = NULL;
+    char *endp = nullptr;
     errno = 0; // strtol will not set errno if valid
-    long int n = std::strtol(str.c_str(), &endp, 10);
-    if (out) *out = (int32_t)n;
+    const char * const begin = str.c_str();
+    LongerInt n;
+    if constexpr (is_signed)
+        n = std::strtoll(begin, &endp, 10);
+    else
+        n = std::strtoull(begin, &endp, 10);
+    if (out) *out = static_cast<Integer>(n);
     // Note that strtol returns a *long int*, so even if strtol doesn't report an over/underflow
-    // we still have to check that the returned value is within the range of an *int32_t*. On 64-bit
+    // we still have to check that the returned value is within the range of an *int*. On 64-bit
     // platforms the size of these types may be different.
     return endp && *endp == 0 && !errno &&
-        n >= std::numeric_limits<int32_t>::min() &&
-        n <= std::numeric_limits<int32_t>::max();
+        endp - begin == std::ptrdiff_t(str.size()) && /* No embedded NUL characters allowed */
+        (is_signed || n >= 0) && /* disallow negative values if returning unsigned */
+        n >= std::numeric_limits<Integer>::min() &&
+        n <= std::numeric_limits<Integer>::max();
+
 }
-bool ParseInt64(const std::string& str, int64_t *out) noexcept
-{
-    if (!ParsePrechecks(str))
-        return false;
-    char *endp = NULL;
-    errno = 0; // strtoll will not set errno if valid
-    long long int n = std::strtoll(str.c_str(), &endp, 10);
-    if (out) *out = (int64_t)n;
-    // Note that strtoll returns a *long long int*, so even if strtol doesn't report a over/underflow
-    // we still have to check that the returned value is within the range of an *int64_t*.
-    return endp && *endp == 0 && !errno &&
-        n >= std::numeric_limits<int64_t>::min() &&
-        n <= std::numeric_limits<int64_t>::max();
-}
+} // namespace
+bool ParseInt(const std::string& str, int *out) noexcept { return GenericParseInt(str, out); }
+bool ParseInt64(const std::string& str, int64_t *out) noexcept { return GenericParseInt(str, out); }
+bool ParseUInt(const std::string& str, unsigned *out) noexcept { return GenericParseInt(str, out); }
+bool ParseUInt64(const std::string& str, uint64_t *out) noexcept { return GenericParseInt(str, out); }
 bool ParseDouble(const std::string& str, double *out)
 {
-    if (!ParsePrechecks(str))
+    if (!ParsePrechecks<true>(str))
         return false;
     if (str.size() >= 2 && str[0] == '0' && str[1] == 'x') // No hexadecimal floats allowed
         return false;

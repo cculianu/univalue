@@ -24,7 +24,6 @@
 
 namespace {
 
-const std::string srcdir(JSON_TEST_SRC);
 static bool test_failed = false;
 
 #define r_assert(expr) { if (!(expr)) { test_failed = true; ret = false; fprintf(stderr, "%s read failed\n", filename.c_str()); } }
@@ -62,7 +61,7 @@ bool runtest(const std::string& filename, const std::string& jdata)
 
 bool runtest_file(const std::string &basename)
 {
-        std::string filename = srcdir + "/" + basename;
+        std::string filename = std::string(JSON_TEST_SRC) + "/" + basename;
         FILE *f = std::fopen(filename.c_str(), "r");
         assert(f != nullptr);
 

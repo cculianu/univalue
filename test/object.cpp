@@ -12,6 +12,7 @@
 
 #include <cassert>
 #include <clocale>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -72,6 +73,7 @@ BOOST_AUTO_TEST_CASE(univalue_constructor)
     numTest.setNumStr("82");
     BOOST_CHECK(numTest.isNum());
     BOOST_CHECK_EQUAL(numTest.getValStr(), "82");
+    BOOST_CHECK_EQUAL(numTest.get_int(), 82);
 
     uint64_t vu64 = 82;
     UniValue v4(vu64);
@@ -102,6 +104,31 @@ BOOST_AUTO_TEST_CASE(univalue_constructor)
     UniValue v9(vcs);
     BOOST_CHECK(v9.isStr());
     BOOST_CHECK_EQUAL(v9.getValStr(), "zappa");
+
+    // unchecked embedded NUL test
+    UniValue uncheckedEmbeddedNul(UniValue::VNUM, std::string("1000\0bad", 8));
+    BOOST_CHECK(uncheckedEmbeddedNul.isNum());
+    BOOST_CHECK_EQUAL(uncheckedEmbeddedNul.getValStr(), std::string("1000\0bad", 8));
+    // below will produce parse errors on get
+    BOOST_CHECK_THROW(uncheckedEmbeddedNul.get_int64(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedEmbeddedNul.get_int(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedEmbeddedNul.get_real(), std::runtime_error);
+
+    // bad numeric string unchecked test
+    UniValue uncheckedBad(UniValue::VNUM, std::string(" 1", 2));
+    BOOST_CHECK(uncheckedBad.isNum());
+    BOOST_CHECK_EQUAL(uncheckedBad.getValStr(), std::string(" 1", 2));
+    // below will produce parse errors on get
+    BOOST_CHECK_THROW(uncheckedBad.get_int64(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedBad.get_int(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedBad.get_real(), std::runtime_error);
+    uncheckedBad = UniValue(UniValue::VNUM, "1000 bad");
+    BOOST_CHECK(uncheckedBad.isNum());
+    BOOST_CHECK_EQUAL(uncheckedBad.getValStr(), "1000 bad");
+    // below will produce parse errors on get
+    BOOST_CHECK_THROW(uncheckedBad.get_int64(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedBad.get_int(), std::runtime_error);
+    BOOST_CHECK_THROW(uncheckedBad.get_real(), std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(univalue_typecheck)
@@ -121,13 +148,18 @@ BOOST_AUTO_TEST_CASE(univalue_typecheck)
     BOOST_CHECK_THROW(v3.get_int64(), std::runtime_error);
     v3.setNumStr("1000");
     BOOST_CHECK_EQUAL(v3.get_int64(), 1000);
+    BOOST_CHECK_EQUAL(v3.get_int(), 1000);
+    BOOST_CHECK_EQUAL(v3.get_uint64(), 1000);
+    BOOST_CHECK_EQUAL(v3.get_uint(), 1000);
+    BOOST_CHECK_EQUAL(v3.get_real(), 1000);
 
     UniValue v4;
     v4.setNumStr("2147483648");
     BOOST_CHECK_EQUAL(v4.get_int64(), 2147483648);
-    BOOST_CHECK_THROW(v4.get_int(), std::runtime_error);
+    BOOST_CHECK_THROW(v4.get_int(), std::runtime_error); // out of range
     v4.setNumStr("1000");
     BOOST_CHECK_EQUAL(v4.get_int(), 1000);
+    BOOST_CHECK_EQUAL(v4.get_int64(), 1000);
     BOOST_CHECK_THROW(v4.get_str(), std::runtime_error);
     BOOST_CHECK_EQUAL(v4.get_real(), 1000);
     BOOST_CHECK_THROW(v4.get_array(), std::runtime_error);
@@ -258,6 +290,10 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = -1.;
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "-1");
+    BOOST_CHECK_EQUAL(v.get_int(), -1);
+    BOOST_CHECK_EQUAL(v.get_int64(), -1);
+    BOOST_CHECK_THROW(v.get_uint(), std::runtime_error); // negatives not allowed in uint
+    BOOST_CHECK_THROW(v.get_uint64(), std::runtime_error); // negatives not allowed in uint64
 
     v = -1. / 3.;
     BOOST_CHECK(v.isNum());
@@ -279,10 +315,31 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     BOOST_CHECK(v.isNull());
     v = -std::numeric_limits<double>::min();
     BOOST_CHECK(v.isNum());
+    // this throws because we cannot parse back the number we just serialized due to excessive precision (known issue)
+    BOOST_CHECK_THROW(v.get_real(), std::runtime_error);
 
     v = -1. / std::numeric_limits<double>::infinity();
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "-0");
+    BOOST_CHECK_EQUAL(v.get_int(), 0);
+    BOOST_CHECK_EQUAL(v.get_uint(), 0); // special case, -0 is allowed as uint
+    BOOST_CHECK_EQUAL(int(v.get_real()), 0);
+
+    v.setNull();
+    v.setNumStr("-00"); // this should fail to parse
+    BOOST_CHECK(v.isNull());
+    // the below is a quirk of this lib. "-00" is invalid JSON but if we use the unchecked c'tor,
+    // it does parse in the getters (this cannot normally happen unless using unchecked c'tor, though).
+    v = UniValue(UniValue::VNUM, "-00"); // unchecked c'tor
+    BOOST_CHECK_EQUAL(v.getValStr(), "-00");
+    BOOST_CHECK_EQUAL(int(v.get_real()), 0);
+    BOOST_CHECK_EQUAL(v.get_int(), 0);
+    BOOST_CHECK_THROW(v.get_uint(), std::runtime_error);
+    v = UniValue(UniValue::VNUM, "-01"); // unchecked c'tor
+    BOOST_CHECK_EQUAL(v.getValStr(), "-01");
+    BOOST_CHECK_EQUAL(int(v.get_real()), -1);
+    BOOST_CHECK_EQUAL(v.get_int(), -1);
+    BOOST_CHECK_THROW(v.get_uint(), std::runtime_error);
 
     v = 1. / std::numeric_limits<double>::infinity();
     BOOST_CHECK(v.isNum());
@@ -320,10 +377,15 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = 1000000000000000. / 3.;
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "333333333333333.3");
+    BOOST_CHECK_EQUAL(v.get_real(), 333333333333333.3);
+    BOOST_CHECK_THROW(v.get_uint64(), std::runtime_error);
+    BOOST_CHECK_THROW(v.get_int64(), std::runtime_error);
 
     v = 10000000000000000. / 3.;
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "3333333333333334");
+    BOOST_CHECK_EQUAL(v.get_int64(), 3333333333333334);
+    BOOST_CHECK_EQUAL(v.get_real(), 3333333333333334.);
 
     v = 100000000000000000. / 3.;
     BOOST_CHECK(v.isNum());
@@ -332,15 +394,29 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = 1.79769313486231570e+308;
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "1.797693134862316e+308");
+    BOOST_CHECK_THROW(v.get_uint64(), std::runtime_error);
 
     v.setNull();
     BOOST_CHECK(v.isNull());
     v = std::numeric_limits<double>::max();
     BOOST_CHECK(v.isNum());
+    // this throws because we cannot parse back the number we just serialized due to excessive precision (known issue)
+    BOOST_CHECK_THROW(v.get_real(), std::runtime_error);
+    // however, this should be in range
+    v = 1.79769e+308;
+    BOOST_CHECK(v.isNum());
+    double dummy;
+    BOOST_CHECK_NO_THROW(dummy = v.get_real());
+    BOOST_CHECK(std::fabs(dummy - 1.79769e+308) < 1.0);
 
     v = 1023;
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "1023");
+    BOOST_CHECK_EQUAL(v.get_int(), 1023);
+    BOOST_CHECK_EQUAL(v.get_uint(), 1023);
+    BOOST_CHECK_EQUAL(v.get_int64(), 1023);
+    BOOST_CHECK_EQUAL(v.get_uint64(), 1023);
+    BOOST_CHECK_EQUAL(v.get_real(), 1023.);
 
     v = 0;
     BOOST_CHECK(v.isNum());
@@ -357,6 +433,10 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = int64_t(-1023);
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "-1023");
+    BOOST_CHECK_EQUAL(v.get_int(), -1023);
+    BOOST_CHECK_EQUAL(v.get_int64(), -1023);
+    BOOST_CHECK_THROW(v.get_uint(), std::runtime_error); // cannot get signed value as unsigned
+    BOOST_CHECK_THROW(v.get_uint64(), std::runtime_error); // cannot get signed value as unsigned
 
     v = int64_t(0);
     BOOST_CHECK(v.isNum());
@@ -365,10 +445,18 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = std::numeric_limits<int64_t>::min();
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "-9223372036854775808");
+    BOOST_CHECK_THROW(v.get_int(), std::runtime_error); // cannot fit value into int
+    BOOST_CHECK_EQUAL(v.get_int64(), -9223372036854775808ull); // can fit into int64_t
 
     v = std::numeric_limits<int64_t>::max();
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "9223372036854775807");
+
+    v = uint64_t(std::numeric_limits<int64_t>::max()) + 1;
+    BOOST_CHECK(v.isNum());
+    BOOST_CHECK_EQUAL(v.getValStr(), "9223372036854775808");
+    BOOST_CHECK_THROW(v.get_int64(), std::runtime_error);
+    BOOST_CHECK_EQUAL(v.get_uint64(), 9223372036854775808ull);
 
     v = uint64_t(1023);
     BOOST_CHECK(v.isNum());
@@ -381,6 +469,16 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     v = std::numeric_limits<uint64_t>::max();
     BOOST_CHECK(v.isNum());
     BOOST_CHECK_EQUAL(v.getValStr(), "18446744073709551615");
+    BOOST_CHECK_THROW(v.get_int64(), std::runtime_error); // cannot fit value into int64_t
+    BOOST_CHECK_EQUAL(v.get_uint64(), 18446744073709551615ull); // can fit value into uint64_t
+
+    v.setNull();
+    const double duint64 = double(std::numeric_limits<uint64_t>::max());
+    v = std::nextafter(duint64, std::numeric_limits<double>::max());
+    BOOST_CHECK(v.isNum());
+    BOOST_CHECK_THROW(v.get_uint64(), std::runtime_error);
+    BOOST_CHECK(v.get_real() > duint64);
+    BOOST_CHECK(v.get_real() < std::numeric_limits<double>::max());
 
     v.setNull();
     v.setNumStr("-688");
@@ -418,6 +516,7 @@ BOOST_AUTO_TEST_CASE(univalue_set)
     BOOST_CHECK_EQUAL(v.isTrue(), true);
     BOOST_CHECK_EQUAL(v.isFalse(), false);
     BOOST_CHECK_EQUAL(v.getBool(), true);
+    BOOST_CHECK_THROW(v.get_int64(), std::runtime_error);
 
     v.setNull();
     BOOST_CHECK(v.isNull());

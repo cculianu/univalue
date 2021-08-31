@@ -259,9 +259,10 @@ void UniValue::operator=(double val_)
     // See BCHN issue #137.
     std::ostringstream oss;
     oss.imbue(std::locale::classic());
-    oss << std::setprecision(16) << val_;
-    typ = VNUM;
-    construct(oss.str());
+    if (oss << std::setprecision(16) << val_) {
+        typ = VNUM;
+        construct(oss.str());
+    }
 }
 
 std::string& UniValue::operator=(std::string_view val_)

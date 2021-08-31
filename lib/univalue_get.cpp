@@ -21,9 +21,19 @@ int UniValue::get_int() const
 {
     if (!isNum())
         throw std::runtime_error("JSON value is not an integer as expected");
-    int32_t retval;
-    if (!univalue_internal::ParseInt32(getValStr(), &retval))
+    int retval;
+    if (!univalue_internal::ParseInt(getValStr(), &retval))
         throw std::runtime_error("JSON integer out of range");
+    return retval;
+}
+
+unsigned UniValue::get_uint() const
+{
+    if (!isNum())
+        throw std::runtime_error("JSON value is not an integer as expected");
+    unsigned retval;
+    if (!univalue_internal::ParseUInt(getValStr(), &retval))
+        throw std::runtime_error("JSON unsigned integer out of range");
     return retval;
 }
 
@@ -34,6 +44,16 @@ int64_t UniValue::get_int64() const
     int64_t retval;
     if (!univalue_internal::ParseInt64(getValStr(), &retval))
         throw std::runtime_error("JSON integer out of range");
+    return retval;
+}
+
+uint64_t UniValue::get_uint64() const
+{
+    if (!isNum())
+        throw std::runtime_error("JSON value is not an integer as expected");
+    uint64_t retval;
+    if (!univalue_internal::ParseUInt64(getValStr(), &retval))
+        throw std::runtime_error("JSON unsigned integer out of range");
     return retval;
 }
 

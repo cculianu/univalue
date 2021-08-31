@@ -848,8 +848,12 @@ public:
     // value is of unexpected type
 
     bool get_bool() const;
-    int get_int() const;
-    int64_t get_int64() const;
+
+    int get_int() const; // may also throw if out of range
+    int64_t get_int64() const; // may also throw if out of range
+    unsigned get_uint() const; // may also throw if out of range or value is negative
+    uint64_t get_uint64() const; // may also throw if out of range or value is negative
+
     double get_real() const;
 
     /**
