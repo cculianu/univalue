@@ -20,6 +20,10 @@ add_library(univalue SHARED
     lib/univalue_write.cpp
 )
 
+set_target_properties(univalue PROPERTIES
+                      SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.0
+                      VERSION ${CMAKE_PROJECT_VERSION})
+
 target_include_directories(univalue
     PUBLIC
         include
