@@ -500,8 +500,8 @@ std::enable_if_t<std::is_integral_v<Integer>, bool>
     else
         n = std::strtoull(begin, &endp, 10);
     if (out) *out = static_cast<Integer>(n);
-    // Note that strtol returns a *long int*, so even if strtol doesn't report an over/underflow
-    // we still have to check that the returned value is within the range of an *int*. On 64-bit
+    // Note that strtoll returns a *long long*, so even if strtoll doesn't report an over/underflow
+    // we still have to check that the returned value is within the range of Integer. On 64-bit
     // platforms the size of these types may be different.
     return endp && *endp == 0 && !errno &&
         endp - begin == std::ptrdiff_t(str.size()) && /* No embedded NUL characters allowed */
@@ -528,7 +528,7 @@ bool ParseDouble(const std::string& str, double *out)
     if (out) *out = result;
     return text.eof() && !text.fail();
 }
-} // namespace univalue_interanal
+} // namespace univalue_internal
 
 const char* UniValue::read(const char* buffer, const char** errpos)
 {
