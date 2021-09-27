@@ -69,39 +69,33 @@ double UniValue::get_real() const
 
 const std::string& UniValue::get_str() const
 {
-    if (!isStr())
-        throw std::runtime_error("JSON value is not a string as expected");
-    return u.val;
+    return const_cast<UniValue *>(this)->get_str();
 }
 std::string& UniValue::get_str()
 {
     if (!isStr())
         throw std::runtime_error("JSON value is not a string as expected");
-    return u.val;
+    return var.get<std::string>();
 }
 
 const UniValue::Object& UniValue::get_obj() const
 {
-    if (!isObject())
-        throw std::runtime_error("JSON value is not an object as expected");
-    return u.entries;
+    return const_cast<UniValue *>(this)->get_obj();
 }
 UniValue::Object& UniValue::get_obj()
 {
     if (!isObject())
         throw std::runtime_error("JSON value is not an object as expected");
-    return u.entries;
+    return var.get<Object>();
 }
 
 const UniValue::Array& UniValue::get_array() const
 {
-    if (!isArray())
-        throw std::runtime_error("JSON value is not an array as expected");
-    return u.values;
+    return const_cast<UniValue *>(this)->get_array();
 }
 UniValue::Array& UniValue::get_array()
 {
     if (!isArray())
         throw std::runtime_error("JSON value is not an array as expected");
-    return u.values;
+    return var.get<Array>();
 }

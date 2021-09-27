@@ -161,57 +161,44 @@ const UniValue& UniValue::Array::back() const noexcept
 
 void UniValue::setNull()
 {
-    destruct();
+    var.reset();
 }
 
 void UniValue::operator=(bool val_)
 {
-    setNull();
-    typ = val_ ? VTRUE : VFALSE;
+    var = val_;
 }
 
 UniValue::Object& UniValue::setObject()
 {
-    setNull();
-    typ = VOBJ;
-    construct();
-    return u.entries;
+    return var.emplace<Object>();
 }
 UniValue::Object& UniValue::operator=(const Object& object)
 {
-    setObject();
-    return u.entries = object;
+    return var.emplace<Object>(object);
 }
 UniValue::Object& UniValue::operator=(Object&& object)
 {
-    setObject();
-    return u.entries = std::move(object);
+    return var.emplace<Object>(std::move(object));
 }
 
 UniValue::Array& UniValue::setArray()
 {
-    setNull();
-    typ = VARR;
-    construct();
-    return u.values;
+    return var.emplace<Array>();
 }
 UniValue::Array& UniValue::operator=(const Array& array)
 {
-    setArray();
-    return u.values = array;
+    return var.emplace<Array>(array);
 }
 UniValue::Array& UniValue::operator=(Array&& array)
 {
-    setArray();
-    return u.values = std::move(array);
+    return var.emplace<Array>(std::move(array));
 }
 
 void UniValue::setNumStr(const char* val_)
 {
     if (auto optStr = univalue_internal::validateAndStripNumStr(val_)) {
-        setNull();
-        typ = VNUM;
-        construct(std::move(*optStr));
+        var.emplace<NumStr>(std::move(*optStr));
     }
 }
 
@@ -230,9 +217,8 @@ void UniValue::setInt64(Int64 val_)
     int n = std::snprintf(buf.data(), size_t(bufSize), std::is_signed<Int64>::value ? "%" PRId64 : "%" PRIu64, val_);
     if (n <= 0 || n >= bufSize) // should never happen
         return;
-    typ = VNUM;
-    construct();
-    u.val.assign(buf.data(), std::string::size_type(n));
+    NumStr &nstr = var.emplace<NumStr>();
+    nstr.assign(buf.data(), std::string::size_type(n));
 }
 
 void UniValue::operator=(short val_) { setInt64<int64_t>(val_); }
@@ -260,25 +246,16 @@ void UniValue::operator=(double val_)
     std::ostringstream oss;
     oss.imbue(std::locale::classic());
     if (oss << std::setprecision(16) << val_) {
-        typ = VNUM;
-        construct(oss.str());
+        var.emplace<NumStr>(oss.str());
     }
 }
 
 std::string& UniValue::operator=(std::string_view val_)
 {
-    setNull();
-    typ = VSTR;
-    construct(std::string{val_});
-    return u.val;
+    var.emplace<std::string>(val_);
+    return var.get<std::string>();
 }
-std::string& UniValue::operator=(std::string&& val_)
-{
-    setNull();
-    typ = VSTR;
-    construct(std::move(val_));
-    return u.val;
-}
+std::string& UniValue::operator=(std::string&& val_) { var = std::move(val_); return var.get<std::string>(); }
 
 const UniValue& UniValue::operator[](std::string_view key) const noexcept
 {
@@ -290,11 +267,11 @@ const UniValue& UniValue::operator[](std::string_view key) const noexcept
 
 const UniValue& UniValue::operator[](size_type index) const noexcept
 {
-    switch (typ) {
+    switch (type()) {
     case VOBJ:
-        return u.entries[index];
+        return var.get<Object>()[index];
     case VARR:
-        return u.values[index];
+        return var.get<Array>()[index];
     default:
         return Null;
     }
@@ -302,11 +279,11 @@ const UniValue& UniValue::operator[](size_type index) const noexcept
 
 const UniValue& UniValue::front() const noexcept
 {
-    switch (typ) {
+    switch (type()) {
     case VOBJ:
-        return u.entries.front();
+        return var.get<Object>().front();
     case VARR:
-        return u.values.front();
+        return var.get<Array>().front();
     default:
         return Null;
     }
@@ -314,85 +291,49 @@ const UniValue& UniValue::front() const noexcept
 
 const UniValue& UniValue::back() const noexcept
 {
-    switch (typ) {
+    switch (type()) {
     case VOBJ:
-        return u.entries.back();
+        return var.get<Object>().back();
     case VARR:
-        return u.values.back();
+        return var.get<Array>().back();
     default:
         return Null;
     }
 }
 
 const UniValue* UniValue::locate(std::string_view key) const noexcept {
-    return typ == VOBJ ? u.entries.locate(key) : nullptr;
+    return const_cast<UniValue *>(this)->locate(key);
 }
 UniValue* UniValue::locate(std::string_view key) noexcept {
-    return typ == VOBJ ? u.entries.locate(key) : nullptr;
+    return type() == VOBJ ? var.get<Object>().locate(key) : nullptr;
 }
 
 const UniValue& UniValue::at(std::string_view key) const {
-    if (typ == VOBJ) {
-        return u.entries.at(key);
-    }
-    throw std::domain_error(std::string("Cannot look up keys in JSON ") + typeName(typ) +
-                            ", expected object with key: " + std::string(key));
+    return const_cast<UniValue *>(this)->at(key);
 }
 UniValue& UniValue::at(std::string_view key) {
-    if (typ == VOBJ) {
-        return u.entries.at(key);
+    if (type() == VOBJ) {
+        return var.get<Object>().at(key);
     }
-    throw std::domain_error(std::string("Cannot look up keys in JSON ") + typeName(typ) +
+    throw std::domain_error(std::string("Cannot look up keys in JSON ") + typeName(type()) +
                             ", expected object with key: " + std::string(key));
 }
 
 const UniValue& UniValue::at(size_type index) const
 {
-    switch (typ) {
-    case VOBJ:
-        return u.entries.at(index);
-    case VARR:
-        return u.values.at(index);
-    default:
-        throw std::domain_error(std::string("Cannot look up indices in JSON ") + typeName(typ) +
-                                ", expected array or object larger than " + std::to_string(index) + " elements");
-    }
+    return const_cast<UniValue *>(this)->at(index);
 }
 UniValue& UniValue::at(size_type index)
 {
-    switch (typ) {
+    switch (type()) {
     case VOBJ:
-        return u.entries.at(index);
+        return var.get<Object>().at(index);
     case VARR:
-        return u.values.at(index);
+        return var.get<Array>().at(index);
     default:
-        throw std::domain_error(std::string("Cannot look up indices in JSON ") + typeName(typ) +
+        throw std::domain_error(std::string("Cannot look up indices in JSON ") + typeName(type()) +
                                 ", expected array or object larger than " + std::to_string(index) + " elements");
     }
-}
-
-bool UniValue::operator==(const UniValue& other) const noexcept
-{
-    // Type must be equal.
-    if (typ != other.typ)
-        return false;
-    // Some types have additional requirements for equality.
-    switch (typ) {
-    case VOBJ:
-        return u.entries == other.u.entries;
-    case VARR:
-        return u.values == other.u.values;
-    case VNUM:
-    case VSTR:
-        return u.val == other.u.val;
-    case VNULL:
-    case VFALSE:
-    case VTRUE:
-        break;
-    }
-    // Returning true is the default behavior, but this is not included as a default statement inside the switch statement,
-    // so that the compiler warns if some type is not explicitly listed there.
-    return true;
 }
 
 const char *UniValue::typeName(UniValue::VType t) noexcept
@@ -430,210 +371,4 @@ std::string UniValue::typeName(int t) {
     appendTypeNameIfTypeIncludes(UniValue::VNUM);
     appendTypeNameIfTypeIncludes(UniValue::VSTR);
     return result;
-}
-
-void UniValue::construct() noexcept {
-    assert(!constructed);
-    switch (typ) {
-    case VNUM:
-    case VSTR:
-        new (&u.val) std::string;
-        constructed = true;
-        break;
-    case VOBJ:
-        new (&u.entries) Object;
-        constructed = true;
-        break;
-    case VARR:
-        new (&u.values) Array;
-        constructed = true;
-        break;
-    default:
-        break;
-    }
-}
-void UniValue::construct(std::string &&s) noexcept {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VNUM || typ == VSTR) {
-        new (&u.val) std::string(std::move(s));
-        constructed = true;
-    }
-}
-void UniValue::construct(const std::string &s) {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VNUM || typ == VSTR) {
-        new (&u.val) std::string(s);
-        constructed = true;
-    }
-}
-void UniValue::construct(Object &&o) noexcept {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VOBJ) {
-        new (&u.entries) Object(std::move(o));
-        constructed = true;
-    }
-}
-void UniValue::construct(const Object &o) {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VOBJ) {
-        new (&u.entries) Object(o);
-        constructed = true;
-    }
-}
-void UniValue::construct(Array &&a) noexcept {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VARR) {
-        new (&u.values) Array(std::move(a));
-        constructed = true;
-    }
-}
-void UniValue::construct(const Array &a) {
-    assert(!constructed);
-    Defer d{[&]{ if (!constructed) typ = VNULL; /* defend against exceptions or invalid usage */}};
-    if (typ == VARR) {
-        new (&u.values) Array(a);
-        constructed = true;
-    }
-}
-void UniValue::destruct() {
-    Defer d{[&]{ typ = VNULL; constructed = false; }}; // clean-up on scope end
-    if (constructed) {
-        switch (typ) {
-        case UniValue::VNUM:
-        case UniValue::VSTR:
-            using String = std::string; // work-around compiler quirks
-            u.val.~String();
-            break;
-        case UniValue::VOBJ:
-            u.entries.~Object();
-            break;
-        case UniValue::VARR:
-            u.values.~Array();
-            break;
-        default:
-            break;
-        }
-    }
-}
-
-UniValue::UniValue(const UniValue& o) : typ(o.typ) {
-    switch (typ) {
-    case VNUM:
-    case VSTR:
-        assert(o.constructed);
-        construct(o.u.val);
-        break;
-    case VOBJ:
-        assert(o.constructed);
-        construct(o.u.entries);
-        break;
-    case VARR:
-        assert(o.constructed);
-        construct(o.u.values);
-        break;
-    default: break;
-    }
-}
-UniValue::UniValue(UniValue&& o) noexcept : typ(o.typ) {
-    switch (typ) {
-    case VNUM:
-    case VSTR:
-        assert(o.constructed);
-        construct(std::move(o.u.val));
-        break;
-    case VOBJ:
-        assert(o.constructed);
-        construct(std::move(o.u.entries));
-        break;
-    case VARR:
-        assert(o.constructed);
-        construct(std::move(o.u.values));
-        break;
-    default: break;
-    }
-}
-UniValue& UniValue::operator=(const UniValue &o) {
-    if (typ != o.typ || !constructed) {
-        destruct();
-        typ = o.typ;
-        switch (typ) {
-        case VNUM:
-        case VSTR:
-            assert(o.constructed);
-            construct(o.u.val);
-            break;
-        case VOBJ:
-            assert(o.constructed);
-            construct(o.u.entries);
-            break;
-        case VARR:
-            assert(o.constructed);
-            construct(o.u.values);
-            break;
-        default: break;
-        }
-    } else {
-        switch (typ) {
-        case VNUM:
-        case VSTR:
-            assert(o.constructed);
-            u.val = o.u.val;
-            break;
-        case VOBJ:
-            assert(o.constructed);
-            u.entries = o.u.entries;
-            break;
-        case VARR:
-            assert(o.constructed);
-            u.values = o.u.values;
-            break;
-        default: break;
-        }
-    }
-    return *this;
-}
-UniValue& UniValue::operator=(UniValue &&o) {
-    if (typ != o.typ || !constructed) {
-        destruct();
-        typ = o.typ;
-        switch (typ) {
-        case VNUM:
-        case VSTR:
-            assert(o.constructed);
-            construct(std::move(o.u.val));
-            break;
-        case VOBJ:
-            assert(o.constructed);
-            construct(std::move(o.u.entries));
-            break;
-        case VARR:
-            assert(o.constructed);
-            construct(std::move(o.u.values));
-            break;
-        default: break;
-        }
-    } else {
-        switch (typ) {
-        case VNUM:
-        case VSTR:
-            assert(o.constructed);
-            u.val = std::move(o.u.val);
-            break;
-        case VOBJ:
-            assert(o.constructed);
-            u.entries = std::move(o.u.entries);
-            break;
-        case VARR:
-            assert(o.constructed);
-            u.values = std::move(o.u.values);
-            break;
-        default: break;
-        }
-    }
-    return *this;
 }

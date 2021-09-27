@@ -295,7 +295,7 @@ inline void UniValue::startNewLine(Stream & ss, const unsigned int prettyIndent,
 /* static */
 void UniValue::stringify(Stream& ss, const UniValue& value, const unsigned int prettyIndent, const unsigned int indentLevel)
 {
-    switch (value.typ) {
+    switch (value.type()) {
     case VNULL:
         ss << "null";
         break;
@@ -306,16 +306,16 @@ void UniValue::stringify(Stream& ss, const UniValue& value, const unsigned int p
         ss << "true";
         break;
     case VOBJ:
-        stringify(ss, value.u.entries, prettyIndent, indentLevel);
+        stringify(ss, value.var.get<Object>(), prettyIndent, indentLevel);
         break;
     case VARR:
-        stringify(ss, value.u.values, prettyIndent, indentLevel);
+        stringify(ss, value.var.get<Array>(), prettyIndent, indentLevel);
         break;
     case VNUM:
-        ss << value.u.val;
+        ss << value.var.get<NumStr>();
         break;
     case VSTR:
-        stringify(ss, value.u.val, prettyIndent, indentLevel);
+        stringify(ss, value.var.get<std::string>(), prettyIndent, indentLevel);
         break;
     }
 }

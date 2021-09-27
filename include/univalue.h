@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "cc_variant.h"
+
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -482,7 +484,28 @@ public:
     static_assert(std::is_same<size_type, Array::size_type>::value,
                   "UniValue::size_type should be equal to both UniValue::Object::size_type and UniValue::Array::size_type.");
 
-    explicit UniValue(VType initialType = VNULL) noexcept : typ(initialType) { construct(); }
+    explicit UniValue(VType initialType = VNULL) noexcept {
+        switch (initialType) {
+        case VNULL:
+            break;
+        case VTRUE:
+        case VFALSE:
+            var.emplace<bool>(initialType == VTRUE);
+            break;
+        case VNUM:
+            var.emplace<NumStr>();
+            break;
+        case VSTR:
+            var.emplace<std::string>();
+            break;
+        case VOBJ:
+            var.emplace<Object>();
+            break;
+        case VARR:
+            var.emplace<Array>();
+            break;
+        }
+    }
 
     // Note: The below "string-like" constructors are unsafe since they do not check or validate the contents of
     // the supplied string. They are offered as a performance optimization for advanced usage.
@@ -492,22 +515,43 @@ public:
     //   produce incorrect JSON (and may exhibit other weird behavior).
     // - If specifying VSTR for initialType, initialStr must be a valid utf-8 string. Invalid codepoints may lead to
     //   invalid JSON being produced.
-    UniValue(VType initialType, std::string_view initialStr) : typ(initialType) { construct(std::string{initialStr}); }
-    UniValue(VType initialType, std::string&& initialStr) noexcept : typ(initialType) { construct(std::move(initialStr)); }
-    UniValue(VType initialType, const char* initialStr) : typ(initialType) { construct(initialStr); }
+    UniValue(VType initialType, std::string&& initialStr) noexcept {
+        switch (initialType) {
+        case VNUM:
+            var.emplace<NumStr>(std::move(initialStr));
+            break;
+        case VSTR:
+            var.emplace<std::string>(std::move(initialStr));
+            break;
+        case VNULL:
+            break;
+        case VTRUE:
+        case VFALSE:
+            var.emplace<bool>(initialType == VTRUE);
+            break;
+        case VOBJ:
+            var.emplace<Object>();
+            break;
+        case VARR:
+            var.emplace<Array>();
+            break;
+        }
+    }
+    UniValue(VType initialType, std::string_view initialStr) : UniValue(initialType, std::string{initialStr}) {}
+    UniValue(VType initialType, const char* initialStr) : UniValue(initialType, std::string{initialStr}) {}
 
     // Copy construction, move construction, copy assignment, and move-assignment
-    explicit UniValue(const UniValue& o);
-    UniValue(UniValue&& o) noexcept;
-    UniValue& operator=(const UniValue &o);
-    UniValue& operator=(UniValue &&o);
+    explicit UniValue(const UniValue& o) = default;
+    UniValue(UniValue&& o) noexcept = default;
+    UniValue& operator=(const UniValue &o) = default;
+    UniValue& operator=(UniValue &&o) = default;
 
     // Misc. convenience constructors
-    UniValue(bool val_) noexcept : typ(val_ ? VTRUE : VFALSE) {}
-    explicit UniValue(const Object& object) : typ(VOBJ) { construct(object); }
-    UniValue(Object&& object) noexcept : typ(VOBJ) { construct(std::move(object)); }
-    explicit UniValue(const Array& array) : typ(VARR) { construct(array); }
-    UniValue(Array&& array) noexcept : typ(VARR) { construct(std::move(array)); }
+    UniValue(bool val_) noexcept : var(val_) {}
+    explicit UniValue(const Object& object) : var(object) {}
+    UniValue(Object&& object) noexcept : var(std::move(object)) {}
+    explicit UniValue(const Array& array) : var(array) {}
+    UniValue(Array&& array) noexcept : var(std::move(array)) {}
     UniValue(short val_) { *this = val_; }
     UniValue(int val_) { *this = val_; }
     UniValue(long val_) { *this = val_; }
@@ -517,11 +561,9 @@ public:
     UniValue(unsigned long val_) { *this = val_; }
     UniValue(unsigned long long val_) { *this = val_; }
     UniValue(double val_) { *this = val_; }
-    UniValue(std::string_view val_) : typ(VSTR) { construct(std::string{val_}); }
-    UniValue(std::string&& val_) noexcept : typ(VSTR) { construct(std::move(val_)); }
-    UniValue(const char* val_) : typ(VSTR){ construct(val_); }
-
-    ~UniValue() { destruct(); }
+    UniValue(std::string_view val_) : UniValue(VSTR, val_) {}
+    UniValue(std::string&& val_) noexcept : UniValue(VSTR, std::move(val_)) {}
+    UniValue(const char* val_) : UniValue(VSTR, val_) {}
 
     void setNull();
     void operator=(bool val);
@@ -546,9 +588,16 @@ public:
     std::string& operator=(const char* val_) { return *this = std::string_view(val_); }
 
     [[nodiscard]]
-    constexpr VType getType() const noexcept { return typ; }
+    constexpr VType getType() const noexcept { return type(); }
     [[nodiscard]]
-    constexpr const std::string& getValStr() const noexcept { return typ == VSTR || typ == VNUM ? u.val : emptyVal; }
+    constexpr const std::string& getValStr() const noexcept {
+        const std::string *ret = &emptyVal;
+        if (type() == VSTR)
+            ret = &var.get<std::string>();
+        else if (type() == VNUM)
+            ret = &var.get<NumStr>();
+        return *ret;
+    }
 
     /**
      * VOBJ/VARR: Returns whether the object/array is empty.
@@ -560,11 +609,11 @@ public:
      */
     [[nodiscard]]
     bool empty() const noexcept {
-        switch (typ) {
+        switch (type()) {
         case VOBJ:
-            return u.entries.empty();
+            return var.get<Object>().empty();
         case VARR:
-            return u.values.empty();
+            return var.get<Array>().empty();
         default:
             return true;
         }
@@ -580,11 +629,11 @@ public:
      */
     [[nodiscard]]
     size_type size() const noexcept {
-        switch (typ) {
+        switch (type()) {
         case VOBJ:
-            return u.entries.size();
+            return var.get<Object>().size();
         case VARR:
-            return u.values.size();
+            return var.get<Array>().size();
         default:
             return 0;
         }
@@ -636,7 +685,7 @@ public:
      * Complexity: linear in the amount of data to compare.
      */
     [[nodiscard]]
-    bool operator==(const UniValue& other) const noexcept;
+    bool operator==(const UniValue& other) const noexcept { return var == other.var; }
 
     /**
      * Returns whether the UniValues are not of the same type or contain unequal data.
@@ -729,7 +778,7 @@ public:
      * Complexity: constant.
      */
     [[nodiscard]]
-    constexpr bool is(int types) const noexcept { return typ & types; }
+    constexpr bool is(int types) const noexcept { return type() & types; }
 
     [[nodiscard]]
     constexpr bool isNull() const noexcept { return is(VNULL); }
@@ -803,26 +852,14 @@ public:
     bool read(const std::string& raw, std::string::size_type *errpos = nullptr);
 
 private:
-    UniValue::VType typ = VNULL;
-    bool constructed = false;
-    union U {
-        std::string val;                       // numbers are stored as C++ strings
-        Object entries;
-        Array values;
-        U() {}
-        ~U() {}
-    } u;
+    struct NumStr : std::string {
+        using std::string::string;
+        NumStr(const std::string &s) : std::string(s) {}
+        NumStr(std::string &&s) : std::string(std::move(s)) {}
+    };
+    cc::variant<bool, NumStr, std::string, Object, Array> var;
 
     static const std::string emptyVal; ///< returned by getValStr() if this is not a VNUM or VSTR
-
-    void construct() noexcept;
-    void construct(std::string &&s) noexcept;
-    void construct(const std::string &s);
-    void construct(Object &&o) noexcept;
-    void construct(const Object &o);
-    void construct(Array &&a) noexcept;
-    void construct(const Array &a);
-    void destruct();
 
     // Opaque type used for writing. This can be further optimized later.
     struct Stream {
@@ -901,9 +938,18 @@ public:
     Array& get_array();
 
     // Misc utility functions
-
     [[nodiscard]]
-    constexpr VType type() const noexcept { return getType(); }
+    constexpr VType type() const noexcept {
+        VType ret = VNULL;
+        var.visit(cc::visitor{
+            [&](bool b) { ret = b ? VTRUE : VFALSE; },
+            [&](const NumStr &) { ret = VNUM; },
+            [&](const std::string &) { ret = VSTR; },
+            [&](const Object &) { ret = VOBJ; },
+            [&](const Array &) { ret = VARR; },
+        });
+        return ret;
+    }
 
     /**
      * Returns the human-readable name of the JSON value type.
