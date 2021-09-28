@@ -70,16 +70,17 @@ public:
         return *this;
     }
 
-    // copy/move-assign directly from contained type
+    // copy/move-assign directly using contained type
     template<typename T>
-    std::enable_if_t<index_of_type<T>() < num_types, variant &>
+    std::enable_if_t<index_of_type<std::remove_cv_t<std::remove_reference_t<T>>>() < num_types, variant &>
     /* variant & */ operator=(T && t) {
-        if (index_of_type<T>() == index_value)
+        using BareT = std::remove_cv_t<std::remove_reference_t<T>>;
+        if (index_of_type<BareT>() == index_value)
             // use copy/move assign if we already contain an object of said type
-            get<T>() = std::forward<T>(t);
+            get<BareT>() = std::forward<T>(t);
         else
             // otherwise construct in-place
-            emplace<T>(std::forward<T>(t));
+            emplace<BareT>(std::forward<T>(t));
         return *this;
     }
 
@@ -146,11 +147,13 @@ public:
     bool operator==(const variant & o) const noexcept {
         if (index_value != o.index_value) return false;
         bool ret = false;
-        visit([&](auto && val){
-            ret = val == o.get<std::remove_cv_t<std::remove_reference_t<decltype(val)>>>();
-        });
+        ([&] {
+          if (index_value == index_of_type<Ts>())
+              ret = get<Ts>() == o.get<Ts>();
+        }(), ...);
         return ret;
     }
+    bool operator!=(const variant & o) const noexcept { return !(*this == o); }
 };
 
 // helper type for use with variant::visit above
