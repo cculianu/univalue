@@ -73,9 +73,12 @@ public:
             reset();
         else
             ([&] {
-                if (other.index() == index_of_type<Ts>())
+                if (other.index() == index_of_type<Ts>()) {
                     emplace<Ts>(other.template get<Ts>());
-            }(), ...);
+                    return true;
+                }
+                return false;
+            }() || ...);
         return *this;
     }
 
@@ -87,8 +90,10 @@ public:
                 if (other.index() == index_of_type<Ts>()) {
                     emplace<Ts>(std::move(other.template get<Ts>()));
                     other.reset();
+                    return true;
                 }
-            }(), ...);
+                return false;
+            }() || ...);
         return *this;
     }
 
@@ -114,9 +119,12 @@ public:
     void reset() {
         if (!valueless()) {
             ([&] {
-                if (index_value == index_of_type<Ts>())
+                if (index_value == index_of_type<Ts>()) {
                     get<Ts>().~Ts();
-            }(), ...);
+                    return true;
+                }
+                return false;
+            }() || ...);
             index_value = invalid_index_value;
         }
     }
@@ -154,16 +162,22 @@ public:
     template<typename Func>
     constexpr void visit(Func && func) {
         ([&] {
-           if (index_value == index_of_type<Ts>())
+           if (index_value == index_of_type<Ts>()) {
                func(get<Ts>());
-        }(), ...);
+               return true;
+            }
+            return false;
+        }() || ...);
     }
     template<typename Func>
     constexpr void visit(Func && func) const {
-       ([&] {
-          if (index_value == index_of_type<Ts>())
+        ([&] {
+          if (index_value == index_of_type<Ts>()) {
               func(get<Ts>());
-       }(), ...);
+              return true;
+           }
+           return false;
+        }() || ...);
     }
 
     bool operator==(const variant & o) const noexcept {
@@ -171,9 +185,12 @@ public:
         else if (!o) return true; // nulls compare equal
         bool ret = false;
         ([&] {
-          if (index_value == index_of_type<Ts>())
+          if (index_value == index_of_type<Ts>()) {
               ret = get<Ts>() == o.get<Ts>();
-        }(), ...);
+              return true;
+          }
+          return false;
+        }() || ...);
         return ret;
     }
     bool operator!=(const variant & o) const noexcept { return !(*this == o); }
@@ -182,7 +199,9 @@ public:
 // helper type for use with variant::visit above
 template<typename ...Ts> struct visitor : Ts... { using Ts::operator()...; };
 template<typename ...Ts> visitor(Ts...) -> visitor<Ts...>;
+
 } // namespace univalue_detail
+
 
 class UniValue {
 public:
@@ -754,11 +773,21 @@ public:
     std::string& operator=(const char* val_) { return operator=(std::string_view(val_)); }
 
     [[nodiscard]]
-    constexpr VType getType() const noexcept { return type(); }
+    constexpr VType getType() const noexcept {
+        VType ret = VNULL;
+        var.visit(univalue_detail::visitor{
+           [&](bool b) { ret = b ? VTRUE : VFALSE; },
+           [&](const NumStr &) { ret = VNUM; },
+           [&](const std::string &) { ret = VSTR; },
+           [&](const Object &) { ret = VOBJ; },
+           [&](const Array &) { ret = VARR; },
+        });
+        return ret;
+    }
 
     [[nodiscard]]
     constexpr const std::string& getValStr() const noexcept {
-        switch(type()) {
+        switch (type()) {
         case VSTR: return var.get<std::string>();
         case VNUM: return var.get<NumStr>();
         default: return emptyVal;
@@ -1108,17 +1137,7 @@ public:
 
     // Misc utility functions
     [[nodiscard]]
-    constexpr VType type() const noexcept {
-        VType ret = VNULL;
-        var.visit(univalue_detail::visitor{
-            [&](bool b) { ret = b ? VTRUE : VFALSE; },
-            [&](const NumStr &) { ret = VNUM; },
-            [&](const std::string &) { ret = VSTR; },
-            [&](const Object &) { ret = VOBJ; },
-            [&](const Array &) { ret = VARR; },
-        });
-        return ret;
-    }
+    constexpr VType type() const noexcept { return getType(); }
 
     /**
      * Returns the human-readable name of the JSON value type.
