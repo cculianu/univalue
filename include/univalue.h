@@ -856,6 +856,14 @@ private:
         using std::string::string;
         NumStr(const std::string &s) : std::string(s) {}
         NumStr(std::string &&s) : std::string(std::move(s)) {}
+        NumStr &operator=(const std::string &s) {
+            std::string::operator=(s);
+            return *this;
+        }
+        NumStr &operator=(std::string &&s) {
+            std::string::operator=(std::move(s));
+            return *this;
+        }
     };
     cc::variant<bool, NumStr, std::string, Object, Array> var;
 
