@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -13,13 +14,15 @@ struct bad_variant_access : std::exception {
     const char *what() const noexcept override { return "bad variant access"; }
 };
 
-
 template<typename ...Ts>
 class variant {
+    template<typename T> struct rmcvr { using type = std::remove_cv_t<std::remove_reference_t<T>>; };
+    template<typename T> using rmcvr_t = typename rmcvr<T>::type;
 public:
     static constexpr uint8_t invalid_index_value = 0xff;
     static constexpr size_t num_types = sizeof...(Ts);
     static_assert (num_types < invalid_index_value && num_types > 0);
+    static_assert ((std::is_same_v<Ts, rmcvr_t<Ts>> && ...)); // ensure all types are bare, non-reference, non-const
 
     /// Returns either the index of type T, or invalid_index_value if this variant cannot contain a T
     template<typename T>
@@ -27,7 +30,7 @@ public:
         int idx = -1;
         int found_ct = 0;
         [[maybe_unused]] auto dummy =
-                ((++idx, found_ct += std::is_same_v<const T &, const Ts &>, std::is_same_v<const T &, const Ts &>)
+                ((++idx, found_ct += std::is_same_v<rmcvr_t<T>, rmcvr_t<Ts>>)
                  || ...);
         if (!found_ct || idx < 0) idx = invalid_index_value;
         return size_t(idx);
@@ -40,8 +43,8 @@ private:
 public:
     constexpr variant() noexcept {} // unlike normal variant, this one's default c'tor makes it "valueless"
 
-    template<typename T, std::enable_if_t<index_of_type<std::remove_reference_t<std::remove_cv_t<T>>>() < num_types, int> = 0>
-    variant(T && t) { emplace<std::remove_reference_t<std::remove_cv_t<T>>>(std::forward<T>(t)); }
+    template<typename T, std::enable_if_t<index_of_type<T>() < num_types, int> = 0>
+    variant(T && t) { emplace<T>(std::forward<T>(t)); }
 
     variant(const variant & other) { *this = other; }
     variant(variant && other) { *this = std::move(other); }
@@ -72,15 +75,14 @@ public:
 
     // copy/move-assign directly using contained type
     template<typename T>
-    std::enable_if_t<index_of_type<std::remove_cv_t<std::remove_reference_t<T>>>() < num_types, variant &>
+    std::enable_if_t<index_of_type<T>() < num_types, variant &>
     /* variant & */ operator=(T && t) {
-        using BareT = std::remove_cv_t<std::remove_reference_t<T>>;
-        if (index_of_type<BareT>() == index_value)
+        if (index_of_type<T>() == index_value)
             // use copy/move assign if we already contain an object of said type
-            get<BareT>() = std::forward<T>(t);
+            get<T>() = std::forward<T>(t);
         else
             // otherwise construct in-place
-            emplace<BareT>(std::forward<T>(t));
+            emplace<T>(std::forward<T>(t));
         return *this;
     }
 
@@ -101,25 +103,26 @@ public:
     }
 
     template<typename T, typename ...Args>
-    std::enable_if_t<index_of_type<T>() < num_types, T &>
+    std::enable_if_t<index_of_type<T>() < num_types, rmcvr_t<T> &>
     /* T & */ emplace(Args && ...args) {
         reset();
-        using BareT = std::remove_cv_t<std::remove_reference_t<T>>;
-        T & ret = *new (buffer) BareT(std::forward<Args>(args)...);
-        index_value = index_of_type<T>();
+        using BareT = rmcvr_t<T>;
+        BareT & ret = *new (buffer) BareT(std::forward<Args>(args)...);
+        index_value = index_of_type<BareT>();
+        assert(index_value < num_types);
         return ret;
     }
 
     template<typename T>
-    std::enable_if_t<index_of_type<T>() < num_types, T &>
+    std::enable_if_t<index_of_type<T>() < num_types, rmcvr_t<T> &>
     /* T & */ get() {
         if (index_of_type<T>() != index_value)
             throw bad_variant_access{};
-        return *reinterpret_cast<T *>(buffer);
+        return *reinterpret_cast<rmcvr_t<T> *>(buffer);
     }
 
     template<typename T>
-    std::enable_if_t<index_of_type<T>() < num_types, const T &>
+    std::enable_if_t<index_of_type<T>() < num_types, const rmcvr_t<T> &>
     /* const T & */ get() const {
         return const_cast<variant &>(*this).get<T>();
     }
@@ -145,7 +148,7 @@ public:
     }
 
     bool operator==(const variant & o) const noexcept {
-        if (index_value != o.index_value) return false;
+        if (index_value != o.index_value) return false; // variants holding different types are always unequal
         else if (!o) return true; // nulls compare equal
         bool ret = false;
         ([&] {
