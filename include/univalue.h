@@ -49,9 +49,7 @@ public:
     static constexpr size_t index_of_type() {
         int idx = -1;
         int found_ct = 0;
-        [[maybe_unused]] auto dummy =
-                ((++idx, found_ct += std::is_same_v<rmcvr_t<T>, rmcvr_t<Ts>>)
-                 || ...);
+        [[maybe_unused]] auto dummy = ((++idx, found_ct += std::is_same_v<rmcvr_t<T>, Ts>) || ...);
         if (!found_ct || idx < 0) idx = invalid_index_value;
         return size_t(idx);
     }
