@@ -21,6 +21,7 @@
 #include <vector>
 
 namespace univalue_detail {
+
 /// Exception used by variant::get<>() below to indicate the variant does not hold the type in question.
 struct bad_variant_access : std::exception {
     const char *what() const noexcept override { return "bad variant access"; }
