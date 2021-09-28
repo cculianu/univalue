@@ -37,7 +37,7 @@ struct Defer {
 /* static */ const std::string UniValue::emptyVal{};
 
 /// Note: Update this manually, for now, when doing a new release.
-/* static */ std::tuple<int, int, int> UniValue::version() { return {2, 1, 0}; }
+/* static */ std::tuple<int, int, int> UniValue::version() { return {2, 3, 0}; }
 
 const UniValue& UniValue::Object::operator[](std::string_view key) const noexcept
 {
@@ -159,42 +159,6 @@ const UniValue& UniValue::Array::back() const noexcept
     return Null;
 }
 
-void UniValue::setNull()
-{
-    var.reset();
-}
-
-void UniValue::operator=(bool val_)
-{
-    var = val_;
-}
-
-UniValue::Object& UniValue::setObject()
-{
-    return var.emplace<Object>();
-}
-UniValue::Object& UniValue::operator=(const Object& object)
-{
-    return var.emplace<Object>(object);
-}
-UniValue::Object& UniValue::operator=(Object&& object)
-{
-    return var.emplace<Object>(std::move(object));
-}
-
-UniValue::Array& UniValue::setArray()
-{
-    return var.emplace<Array>();
-}
-UniValue::Array& UniValue::operator=(const Array& array)
-{
-    return var.emplace<Array>(array);
-}
-UniValue::Array& UniValue::operator=(Array&& array)
-{
-    return var.emplace<Array>(std::move(array));
-}
-
 void UniValue::setNumStr(const char* val_)
 {
     if (auto optStr = univalue_internal::validateAndStripNumStr(val_)) {
@@ -217,8 +181,7 @@ void UniValue::setInt64(Int64 val_)
     int n = std::snprintf(buf.data(), size_t(bufSize), std::is_signed<Int64>::value ? "%" PRId64 : "%" PRIu64, val_);
     if (n <= 0 || n >= bufSize) // should never happen
         return;
-    NumStr &nstr = var.emplace<NumStr>();
-    nstr.assign(buf.data(), std::string::size_type(n));
+    var.emplace<NumStr>(buf.data(), std::string::size_type(n));
 }
 
 void UniValue::operator=(short val_) { setInt64<int64_t>(val_); }
@@ -249,13 +212,6 @@ void UniValue::operator=(double val_)
         var.emplace<NumStr>(oss.str());
     }
 }
-
-std::string& UniValue::operator=(std::string_view val_)
-{
-    var.emplace<std::string>(val_);
-    return var.get<std::string>();
-}
-std::string& UniValue::operator=(std::string&& val_) { var = std::move(val_); return var.get<std::string>(); }
 
 const UniValue& UniValue::operator[](std::string_view key) const noexcept
 {

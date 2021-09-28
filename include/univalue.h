@@ -565,14 +565,14 @@ public:
     UniValue(std::string&& val_) noexcept : UniValue(VSTR, std::move(val_)) {}
     UniValue(const char* val_) : UniValue(VSTR, val_) {}
 
-    void setNull();
-    void operator=(bool val);
-    Object& setObject();
-    Object& operator=(const Object& object);
-    Object& operator=(Object&& object);
-    Array& setArray();
-    Array& operator=(const Array& array);
-    Array& operator=(Array&& array);
+    void setNull() { var.reset(); }
+    void operator=(bool val) { var = val; }
+    Object& setObject() { return var.emplace<Object>(); }
+    Object& operator=(const Object& object) { return var.emplace<Object>(object); }
+    Object& operator=(Object&& object) { return var.emplace<Object>(std::move(object)); }
+    Array& setArray() { return var.emplace<Array>(); }
+    Array& operator=(const Array& array) { return var.emplace<Array>(array); }
+    Array& operator=(Array&& array) { return var.emplace<Array>(std::move(array)); }
     void setNumStr(const char* val); // TODO: refactor to assign null on failure
     void operator=(short val);
     void operator=(int val);
@@ -583,20 +583,19 @@ public:
     void operator=(unsigned long val);
     void operator=(unsigned long long val);
     void operator=(double val);
-    std::string& operator=(std::string_view val);
-    std::string& operator=(std::string&& val);
-    std::string& operator=(const char* val_) { return *this = std::string_view(val_); }
+    std::string& operator=(std::string_view val) { return var.emplace<std::string>(val); }
+    std::string& operator=(std::string&& val) { return var.emplace<std::string>(std::move(val)); }
+    std::string& operator=(const char* val_) { return operator=(std::string_view(val_)); }
 
     [[nodiscard]]
     constexpr VType getType() const noexcept { return type(); }
     [[nodiscard]]
     constexpr const std::string& getValStr() const noexcept {
-        const std::string *ret = &emptyVal;
-        if (type() == VSTR)
-            ret = &var.get<std::string>();
-        else if (type() == VNUM)
-            ret = &var.get<NumStr>();
-        return *ret;
+        switch(type()) {
+        case VSTR: return var.get<std::string>();
+        case VNUM: return var.get<NumStr>();
+        default: return emptyVal;
+        }
     }
 
     /**
@@ -610,12 +609,9 @@ public:
     [[nodiscard]]
     bool empty() const noexcept {
         switch (type()) {
-        case VOBJ:
-            return var.get<Object>().empty();
-        case VARR:
-            return var.get<Array>().empty();
-        default:
-            return true;
+        case VOBJ: return var.get<Object>().empty();
+        case VARR: return var.get<Array>().empty();
+        default: return true;
         }
     }
 
@@ -630,12 +626,9 @@ public:
     [[nodiscard]]
     size_type size() const noexcept {
         switch (type()) {
-        case VOBJ:
-            return var.get<Object>().size();
-        case VARR:
-            return var.get<Array>().size();
-        default:
-            return 0;
+        case VOBJ: return var.get<Object>().size();
+        case VARR: return var.get<Array>().size();
+        default: return 0;
         }
     }
 
@@ -852,15 +845,16 @@ public:
     bool read(const std::string& raw, std::string::size_type *errpos = nullptr);
 
 private:
+    // "type tag" to differentiate a string containing a JSON numeric from a JSON string
     struct NumStr : std::string {
         using std::string::string;
         NumStr(const std::string &s) : std::string(s) {}
-        NumStr(std::string &&s) : std::string(std::move(s)) {}
-        NumStr &operator=(const std::string &s) {
+        NumStr(std::string &&s) noexcept : std::string(std::move(s)) {}
+        NumStr & operator=(const std::string &s) {
             std::string::operator=(s);
             return *this;
         }
-        NumStr &operator=(std::string &&s) {
+        NumStr & operator=(std::string &&s) noexcept {
             std::string::operator=(std::move(s));
             return *this;
         }
