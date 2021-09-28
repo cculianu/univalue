@@ -146,6 +146,7 @@ public:
 
     bool operator==(const variant & o) const noexcept {
         if (index_value != o.index_value) return false;
+        else if (!o) return true; // nulls compare equal
         bool ret = false;
         ([&] {
           if (index_value == index_of_type<Ts>())
