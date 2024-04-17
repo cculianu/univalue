@@ -25,8 +25,10 @@ add_library(univalue
 )
 
 set_target_properties(univalue PROPERTIES
-                      SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}.0
-                      VERSION ${CMAKE_PROJECT_VERSION})
+                      SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.0"
+                      VERSION ${PROJECT_VERSION}
+                      OUTPUT_NAME univalue
+                      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
 target_include_directories(univalue
     PUBLIC
