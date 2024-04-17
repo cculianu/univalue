@@ -13,7 +13,11 @@ if(CMAKE_VERSION VERSION_LESS "3.7.0")
     set(CMAKE_INCLUDE_CURRENT_DIR ON)
 endif()
 
-add_library(univalue SHARED
+option(BUILD_TESTS "Build tests" ON)
+option(BUILD_BENCH "Build benchmark test" ON)
+option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+
+add_library(univalue
     lib/univalue.cpp
     lib/univalue_get.cpp
     lib/univalue_read.cpp
@@ -30,10 +34,6 @@ target_include_directories(univalue
     PRIVATE
         lib
 )
-
-option(BUILD_TESTS "Build tests" ON)
-option(BUILD_BENCH "Build benchmark test" ON)
-
 
 if(BUILD_TESTS)
     add_custom_target(check)
