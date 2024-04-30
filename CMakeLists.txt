@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.5.0)
 
 project(univalue VERSION 2.3.0 LANGUAGES CXX)
 
