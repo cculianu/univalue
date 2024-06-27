@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <exception>
 #include <initializer_list>
+#include <new>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -147,7 +148,7 @@ public:
     /* T & */ get() {
         if (index_of_type<T>() != index_value)
             throw bad_variant_access{};
-        return *reinterpret_cast<rmcvr_t<T> *>(buffer);
+        return *std::launder(reinterpret_cast<rmcvr_t<T> *>(buffer));
     }
 
     template<typename T>
