@@ -47,16 +47,19 @@ public:
     /// Returns either the index of type T, or invalid_index_value if this variant cannot contain a T
     template<typename T>
     static constexpr size_t index_of_type() {
-        int idx = -1;
-        int found_ct = 0;
+        int idx = -1, found_ct = 0;
         [[maybe_unused]] auto dummy = ((++idx, found_ct += std::is_same_v<rmcvr_t<T>, Ts>) || ...);
         if (!found_ct || idx < 0) idx = invalid_index_value;
         return size_t(idx);
     }
 
 private:
-    alignas(Ts...) std::byte buffer[std::max({sizeof(Ts)...})];
+    static constexpr size_t buffer_bytes = std::max({sizeof(Ts)...});
+    alignas(Ts...) std::byte buffer[buffer_bytes];
     uint8_t index_value = invalid_index_value;
+
+    static_assert (((buffer_bytes >= sizeof(Ts)) && ...),
+                   "Defensive check to ensure buffer is big enougn to hold all possible variant types.");
 
 public:
     constexpr variant() noexcept {} // unlike normal variant, this one's default c'tor makes it "valueless"
