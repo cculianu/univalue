@@ -17,6 +17,9 @@ option(BUILD_TESTS "Build tests" ON)
 option(BUILD_BENCH "Build benchmark test" ON)
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 
+# Add path for custom modules
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
+
 add_library(univalue
     lib/univalue.cpp
     lib/univalue_get.cpp
@@ -74,6 +77,18 @@ if(BUILD_BENCH)
         target_link_libraries(bench_univalue PRIVATE nlohmann_json::nlohmann_json)
     else()
         message("nlohmann::json was not found, proceeding anyway since it is not required.")
+        message("However, if you wish to use the \"bench\" target, please install it in")
+        message("order to get a comparitive benchmark versus that library.")
+        message("")
+    endif()
+
+    # also look for Jansson (C library, commonly used in the Bitcoin world)
+    include(FindJansson)
+    if(JANSSON_FOUND)
+        target_link_libraries(bench_univalue PRIVATE "${JANSSON_LIBRARIES}")
+        target_include_directories(bench_univalue PRIVATE "${JANSSON_INCLUDE_DIRS}")
+    else()
+        message("jansson was not found, proceeding anyway since it is not required.")
         message("However, if you wish to use the \"bench\" target, please install it in")
         message("order to get a comparitive benchmark versus that library.")
         message("")

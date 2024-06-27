@@ -29,6 +29,11 @@
 #define HAVE_NLOHMANN
 #endif
 
+#if __has_include(<jansson.h>)
+#include <jansson.h>
+#define HAVE_JANSSON
+#endif
+
 namespace {
 
 int64_t GetPerfTimeNanos() {
@@ -140,6 +145,43 @@ std::string Tic::format(int64_t nsec) {
     return buf;
 }
 
+template <typename F>
+class [[maybe_unused]] Defer  {
+    F f;
+public:
+    Defer(F && lambda) : f(std::move(lambda)) {}
+    ~Defer() { f(); }
+};
+
+void printResults(const Tic &t0, std::vector<Tic> &parseTimes, std::vector<Tic> &serializeTimes)
+{
+    assert(!parseTimes.empty() && !serializeTimes.empty());
+    const auto Compare = [](const Tic &a, const Tic &b){ return a.nsec() < b.nsec(); };
+    std::sort(parseTimes.begin(), parseTimes.end(), Compare);
+    std::sort(serializeTimes.begin(), serializeTimes.end(), Compare);
+    const size_t N = parseTimes.size();
+    assert(N == serializeTimes.size());
+    const auto &parseMedian = parseTimes[N / 2];
+    const auto &serializeMedian = serializeTimes[N / 2];
+    int64_t parseAvg{}, serializeAvg{};
+    for (const auto &tic : parseTimes) parseAvg += tic.usec();
+    for (const auto &tic : serializeTimes) serializeAvg += tic.usec();
+    parseAvg /= parseTimes.size();
+    serializeAvg /= serializeTimes.size();
+    std::cout << "Elapsed (msec) - " << t0.msecStr() << "\n"
+              << "Parse (msec) - "
+              << "median: " << parseMedian.msecStr()
+              << ", avg: " << Tic::format(parseAvg/1e3, 3)
+              << ", best: " << parseTimes.front().msecStr()
+              << ", worst: " << parseTimes.back().msecStr() << "\n"
+              << "Serialize (msec) - "
+              << "median: " << serializeMedian.msecStr()
+              << ", avg: " << Tic::format(serializeAvg/1e3, 3)
+              << ", best: " << serializeTimes.front().msecStr()
+              << ", worst: " << serializeTimes.back().msecStr() << "\n";
+}
+
+[[nodiscard]]
 bool runbench_univalue(const size_t N, const std::string &jdata)
 {
     assert(N > 0);
@@ -164,32 +206,12 @@ bool runbench_univalue(const size_t N, const std::string &jdata)
         serializeTimes.back().fin(); // freeze timer
 
         // check strings -- this is to ensure uv.stringify() is not a no-op above
-        assert(strings.size() < 2 || strings[strings.size()-1] == strings[strings.size() - 1]);
+        assert(strings.size() < 2 || strings[strings.size() - 1] == strings[strings.size() - 2]);
         strings.resize(1); // throw away old strings
     }
     t0.fin();
-    assert(!parseTimes.empty() && !serializeTimes.empty());
-    const auto Compare = [](const Tic &a, const Tic &b){ return a.nsec() < b.nsec(); };
-    std::sort(parseTimes.begin(), parseTimes.end(), Compare);
-    std::sort(serializeTimes.begin(), serializeTimes.end(), Compare);
-    const auto &parseMedian = parseTimes[N / 2];
-    const auto &serializeMedian = serializeTimes[N / 2];
-    int64_t parseAvg{}, serializeAvg{};
-    for (const auto &tic : parseTimes) parseAvg += tic.usec();
-    for (const auto &tic : serializeTimes) serializeAvg += tic.usec();
-    parseAvg /= parseTimes.size();
-    serializeAvg /= serializeTimes.size();
-    std::cout << "Elapsed (msec) - " << t0.msecStr() << "\n"
-              << "Parse (msec) - "
-              << "median: " << parseMedian.msecStr()
-              << ", avg: " << Tic::format(parseAvg/1e3, 3)
-              << ", best: " << parseTimes.front().msecStr()
-              << ", worst: " << parseTimes.back().msecStr() << "\n"
-              << "Serialize (msec) - "
-              << "median: " << serializeMedian.msecStr()
-              << ", avg: " << Tic::format(serializeAvg/1e3, 3)
-              << ", best: " << serializeTimes.front().msecStr()
-              << ", worst: " << serializeTimes.back().msecStr() << "\n";
+
+    printResults(t0, parseTimes, serializeTimes);
 
     return true;
 }
@@ -213,33 +235,67 @@ void runbench_nlohmann(const size_t N, const std::string &jdata)
         strings.push_back( j.dump(4) );
         serializeTimes.back().fin(); // freeze timer
 
-        // check strings -- this is to ensure uv.stringify() is not a no-op above
-        assert(strings.size() < 2 || strings[strings.size()-1] == strings[strings.size() - 1]);
+        // check strings -- this is to ensure j.dump() is not a no-op above
+        assert(strings.size() < 2 || strings[strings.size() - 1] == strings[strings.size() - 2]);
         strings.resize(1); // throw away old strings
     }
     t0.fin();
-    assert(!parseTimes.empty() && !serializeTimes.empty());
-    const auto Compare = [](const Tic &a, const Tic &b){ return a.nsec() < b.nsec(); };
-    std::sort(parseTimes.begin(), parseTimes.end(), Compare);
-    std::sort(serializeTimes.begin(), serializeTimes.end(), Compare);
-    const auto &parseMedian = parseTimes[N / 2];
-    const auto &serializeMedian = serializeTimes[N / 2];
-    int64_t parseAvg{}, serializeAvg{};
-    for (const auto &tic : parseTimes) parseAvg += tic.usec();
-    for (const auto &tic : serializeTimes) serializeAvg += tic.usec();
-    parseAvg /= parseTimes.size();
-    serializeAvg /= serializeTimes.size();
-    std::cout << "Elapsed (msec) - " << t0.msecStr() << "\n"
-              << "Parse (msec) - "
-              << "median: " << parseMedian.msecStr()
-              << ", avg: " << Tic::format(parseAvg/1e3, 3)
-              << ", best: " << parseTimes.front().msecStr()
-              << ", worst: " << parseTimes.back().msecStr() << "\n"
-              << "Serialize (msec) - "
-              << "median: " << serializeMedian.msecStr()
-              << ", avg: " << Tic::format(serializeAvg/1e3, 3)
-              << ", best: " << serializeTimes.front().msecStr()
-              << ", worst: " << serializeTimes.back().msecStr() << "\n";
+
+    printResults(t0, parseTimes, serializeTimes);
+}
+#endif
+
+#ifdef HAVE_JANSSON
+[[nodiscard]]
+bool runbench_jansson(const size_t N, const std::string &jdata)
+{
+    assert(N > 0);
+    std::cout << "Parsing and re-serializing " << N << " times ...\n";
+    std::vector<Tic> parseTimes, serializeTimes;
+    parseTimes.reserve(N); serializeTimes.reserve(N);
+    std::vector<std::string> strings;
+    strings.reserve(2);
+    Tic t0;
+    for (size_t i = 0; i < N; ++i) {
+        parseTimes.emplace_back(); // start timer
+        json_t *json{};
+        json_error_t error = {};
+        Defer d([&json] { if (json) { json_decref(json); json = nullptr; } });
+        if ( ! (json = json_loadb(jdata.c_str(), jdata.size(), JSON_DECODE_ANY|JSON_ALLOW_NUL, &error))) {
+            std::cerr << "Failed to parse on iteration " << i << ", line: " << error.line << ", col: " << error.column
+                      << ", text: " << error.text << "\n";
+            return false;
+        }
+        parseTimes.back().fin(); // freeze timer
+
+        serializeTimes.emplace_back(); // start timer
+        std::string jbuf(size_t(jdata.size() * 2), '\0');
+        const size_t sersz = json_dumpb(json, jbuf.data(), jbuf.size(), JSON_INDENT(4)|JSON_PRESERVE_ORDER|JSON_ENCODE_ANY);
+        if (!sersz && !jdata.empty()) {
+            std::cerr << "Encoded empty data for iteration " << i << "!\n";
+            return false;
+        } else if (sersz > jbuf.size()) {
+            std::cerr << "sersz > jbuf.size() (" << sersz << " > " << jbuf.size() << ") for for iteration " << i << "!\n";
+            return false;
+        } else if (sersz < size_t(jdata.size() * 0.9)) {
+            // if the serialized buffer is < 90% of the original buffer something is very wrong here..
+            std::cerr << "sersz is much too small compared to jdata.size() (sersz: " << sersz << ", jdata.size(): "
+                      << jdata.size() << ") for for iteration " << i << "!\n";
+            return false;
+        }
+        jbuf.resize(sersz); // ensure string is truncated to actual size we used
+        strings.push_back(std::move(jbuf));
+        serializeTimes.back().fin(); // freeze timer
+
+        // check strings -- this is to ensure json_dumpb is not a no-op above
+        assert(strings.size() < 2 || strings[strings.size() - 1] == strings[strings.size() - 2]);
+        strings.resize(1); // throw away old strings
+    }
+    t0.fin();
+
+    printResults(t0, parseTimes, serializeTimes);
+
+    return true;
 }
 #endif
 
@@ -276,9 +332,14 @@ bool runbench_file(const std::string &path)
     try {
         runbench_nlohmann(N, jdata);
     } catch (const nlohmann::json::exception &e) {
-        std::cout << "nlohmann::json::exception caught: " << e.what() << "\n";
+        std::cerr << "nlohmann::json::exception caught: " << e.what() << "\n";
         return false;
     }
+#endif
+#ifdef HAVE_JANSSON
+    std::cout << "\n--- Jansson lib ---\n";
+    if ( ! runbench_jansson(N, jdata))
+        return false;
 #endif
     return true;
 }
@@ -290,6 +351,10 @@ int main(int argc, char *argv[])
 #ifndef HAVE_NLOHMANN
     std::cerr << "WARNING: nlohmann::json was not linked to this binary!\n"
               << "WARNING: For best results, please install nlohmann::json and rebuild this program.\n\n";
+#endif
+#ifndef HAVE_JANSSON
+    std::cerr << "WARNING: Jansson was not linked to this binary!\n"
+              << "WARNING: For best results, please install Jansson and rebuild this program.\n\n";
 #endif
     int failct = 0;
     for (int i = 1; i < argc; ++i) {
