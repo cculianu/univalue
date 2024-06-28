@@ -43,7 +43,8 @@ public:
     static constexpr uint8_t invalid_index_value = 0xff;
     static constexpr size_t num_types = sizeof...(Ts);
     static_assert (num_types < invalid_index_value && num_types > 0);
-    static_assert ((std::is_same_v<Ts, rmcvr_t<Ts>> && ...)); // ensure all types are bare, non-reference, non-const
+    static_assert (((std::is_same_v<Ts, rmcvr_t<Ts>> && !std::is_same_v<Ts, void>) && ...),
+                   "All variant types must be non-reference, non-const, non-volatile, and non-void.");
 
     /// Returns either the index of type T, or invalid_index_value if this variant cannot contain a T
     template<typename T>
@@ -61,6 +62,13 @@ private:
 
     static_assert (((buffer_bytes >= sizeof(Ts)) && ...),
                    "Defensive check to ensure buffer is big enougn to hold all possible variant types.");
+
+    static constexpr bool no_dupe_types() {
+        size_t idx{};
+        return ((++idx, index_of_type<Ts>() + 1u == idx) && ...);
+    }
+
+    static_assert (no_dupe_types(), "Defensive check to prevent duplicate variant types.");
 
 public:
     constexpr variant() noexcept {} // unlike normal variant, this one's default c'tor makes it "valueless"
