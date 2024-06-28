@@ -125,7 +125,7 @@ public:
 
     constexpr size_t index() const noexcept { return index_value; }
     constexpr bool valueless() const noexcept { return index() == invalid_index_value; }
-    constexpr operator bool() const noexcept { return !valueless(); }
+    constexpr explicit operator bool() const noexcept { return !valueless(); }
 
     void reset() {
         if (!valueless()) {
