@@ -1,7 +1,7 @@
 // Copyright 2014 BitPay Inc.
 // Copyright 2015 Bitcoin Core Developers
 // Copyright (c) 2020-2021 The Bitcoin developers
-// Copyright (c) 2021 Calin A. Culianu <calin.culianu@gmail.com>
+// Copyright (c) 2021-2024 Calin A. Culianu <calin.culianu@gmail.com>
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://opensource.org/licenses/mit-license.php.
 
@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <exception>
 #include <initializer_list>
-#include <new>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -39,12 +39,67 @@ template<typename ...Ts>
 class variant {
     template<typename T> struct rmcvr { using type = std::remove_cv_t<std::remove_reference_t<T>>; };
     template<typename T> using rmcvr_t = typename rmcvr<T>::type;
+
+    // Used in recursive_union below (C++20 has this as a constexpr)
+    template <typename T, typename ...Args>
+    static inline T * construct_at(T *p, Args && ...args) {
+        return ::new (static_cast<void *>(p)) T(std::forward<Args>(args)...);
+    }
+
+    struct monostate {};
+
+    template<typename...> union recursive_union; // fwd decl req'd since recursive_union references itself
+
+    // Recursive union, used as a way to implement variants (other way would involve a byte blob buffer).
+    template<typename T0, typename ...TsN>
+    union recursive_union<T0, TsN...> {
+        rmcvr_t<T0> t0;
+        using maybe_more_ts = std::conditional_t<sizeof...(TsN) != 0U, recursive_union<TsN...>, monostate>;
+        maybe_more_ts etc; // default active member, either the other Ts, or a monostate if this is the last T.
+
+        constexpr recursive_union() noexcept : etc{} {}
+        ~recursive_union() noexcept { std::destroy_at(&etc); }
+        recursive_union &operator=(const recursive_union &) = delete;
+
+        template <size_t I, typename ...Args>
+        std::enable_if_t<I < 1u + sizeof...(TsN), void>
+        /* void */ construct(Args && ...args) {
+            if constexpr (I == 0u) {
+                std::destroy_at(&etc);
+                construct_at(std::addressof(t0), std::forward<Args>(args)...);
+            } else {
+                etc.template construct<I - 1U>(std::forward<Args>(args)...);
+            }
+        }
+
+        template<size_t I, typename ...Args>
+        std::enable_if_t<I < 1u + sizeof...(TsN), void>
+        /* void */ destroy() {
+            if constexpr (I == 0u) {
+                std::destroy_at(std::addressof(t0));
+                construct_at(&etc);
+            } else {
+                etc.template destroy<I - 1u>();
+            }
+        }
+
+        // Note: Potentially unsafe. Enclosing class tracks the state to determine if this is legal or UB.
+        template<size_t I, typename ...Args>
+        constexpr const auto & get() const noexcept {
+            static_assert (I < 1u + sizeof...(TsN));
+            if constexpr (I == 0u)
+                return t0;
+            else
+                return etc.template get<I - 1u>();
+        }
+    };
+
 public:
-    static constexpr uint8_t invalid_index_value = 0xff;
+    static constexpr uint8_t invalid_index_value = 0xffu;
     static constexpr size_t num_types = sizeof...(Ts);
-    static_assert (num_types < invalid_index_value && num_types > 0);
+    static_assert (num_types < invalid_index_value && num_types > 0u, "Must specify at least 1 and no more than 254 types.");
     static_assert (((std::is_same_v<Ts, rmcvr_t<Ts>> && !std::is_same_v<Ts, void>) && ...),
-                   "All variant types must be non-reference, non-const, non-volatile, and non-void.");
+                   "All types must be non-reference, non-const, non-volatile, and non-void.");
 
     /// Returns either the index of type T, or invalid_index_value if this variant cannot contain a T
     template<typename T>
@@ -56,19 +111,15 @@ public:
     }
 
 private:
-    static constexpr size_t buffer_bytes = std::max({sizeof(Ts)...});
-    alignas(Ts...) std::byte buffer[buffer_bytes];
     uint8_t index_value = invalid_index_value;
-
-    static_assert (((buffer_bytes >= sizeof(Ts)) && ...),
-                   "Defensive check to ensure buffer is big enougn to hold all possible variant types.");
+    recursive_union<Ts...> u;
 
     static constexpr bool no_dupe_types() {
         size_t idx{};
         return ((++idx, index_of_type<Ts>() + 1u == idx) && ...);
     }
 
-    static_assert (no_dupe_types(), "Defensive check to prevent duplicate variant types.");
+    static_assert (no_dupe_types(), "Duplicate types are not allowed.");
 
 public:
     constexpr variant() noexcept {} // unlike normal variant, this one's default c'tor makes it "valueless"
@@ -84,8 +135,11 @@ public:
             reset();
         else
             ([&] {
-                if (other.index() == index_of_type<Ts>()) {
-                    emplace<Ts>(other.template get<Ts>());
+                if (other.holds_alternative<Ts>()) {
+                    if (holds_alternative<Ts>())
+                        get<Ts>() = other.get<Ts>(); // use direct copy-assign of contained type if they match
+                    else
+                        emplace<Ts>(other.get<Ts>()); // otherwise copy-construct in-place
                     return true;
                 }
                 return false;
@@ -98,8 +152,11 @@ public:
             reset();
         else
             ([&] {
-                if (other.index() == index_of_type<Ts>()) {
-                    emplace<Ts>(std::move(other.template get<Ts>()));
+                if (other.holds_alternative<Ts>()) {
+                    if (holds_alternative<Ts>())
+                        get<Ts>() = std::move(other.get<Ts>()); // use direct move-assign of contained type if they match
+                    else
+                        emplace<Ts>(std::move(other.get<Ts>())); // otherwise move-construct in-place
                     other.reset();
                     return true;
                 }
@@ -112,7 +169,7 @@ public:
     template<typename T>
     std::enable_if_t<index_of_type<T>() < num_types, variant &>
     /* variant & */ operator=(T && t) {
-        if (index_of_type<T>() == index_value)
+        if (holds_alternative<T>())
             // use copy/move assign if we already contain an object of said type
             get<T>() = std::forward<T>(t);
         else
@@ -130,8 +187,8 @@ public:
     void reset() {
         if (!valueless()) {
             ([&] {
-                if (index_value == index_of_type<Ts>()) {
-                    get<Ts>().~Ts();
+                if (holds_alternative<Ts>()) {
+                    u.template destroy<index_of_type<Ts>()>();
                     return true;
                 }
                 return false;
@@ -145,35 +202,33 @@ public:
     /* T & */ emplace(Args && ...args) {
         reset();
         using BareT = rmcvr_t<T>;
-        BareT & ret = *new (buffer) BareT(std::forward<Args>(args)...);
+        u.template construct<index_of_type<BareT>()>(std::forward<Args>(args)...);
         index_value = index_of_type<BareT>();
         assert(index_value < num_types);
-        return ret;
+        return get<BareT>();
     }
 
     template<typename T>
-    std::enable_if_t<index_of_type<T>() < num_types, rmcvr_t<T> &>
-    /* T & */ get() {
-        if (index_of_type<T>() != index_value)
-            throw bad_variant_access{};
-        return *std::launder(reinterpret_cast<rmcvr_t<T> *>(buffer));
-    }
-
-    template<typename T>
-    std::enable_if_t<index_of_type<T>() < num_types, const rmcvr_t<T> &>
+    constexpr std::enable_if_t<index_of_type<T>() < num_types, const rmcvr_t<T> &>
     /* const T & */ get() const {
-        return const_cast<variant &>(*this).get<T>();
+        if (!holds_alternative<T>())
+            throw bad_variant_access{};
+        return u.template get<index_of_type<T>()>();
     }
+
+    template<typename T>
+    constexpr std::enable_if_t<index_of_type<T>() < num_types, rmcvr_t<T> &>
+    /* T & */ get() { return const_cast<rmcvr_t<T> &>(std::as_const(*this).template get<T>()); }
 
     template<typename T>
     constexpr std::enable_if_t<index_of_type<T>() < num_types, bool>
-    /* bool */ holds_alternative() noexcept { return index_of_type<T>() == index_value; }
+    /* bool */ holds_alternative() const noexcept { return index_of_type<T>() == index_value; }
 
     // for simplicity, our version of "visit" doesn't propagate the return result of the visitor
     template<typename Func>
     constexpr void visit(Func && func) {
         ([&] {
-           if (index_value == index_of_type<Ts>()) {
+           if (holds_alternative<Ts>()) {
                func(get<Ts>());
                return true;
             }
@@ -183,7 +238,7 @@ public:
     template<typename Func>
     constexpr void visit(Func && func) const {
         ([&] {
-          if (index_value == index_of_type<Ts>()) {
+          if (holds_alternative<Ts>()) {
               func(get<Ts>());
               return true;
            }
@@ -193,10 +248,10 @@ public:
 
     bool operator==(const variant & o) const noexcept {
         if (index_value != o.index_value) return false; // variants holding different types are always unequal
-        else if (!o) return true; // nulls compare equal
+        else if (valueless()) return true; // nulls compare equal
         bool ret = false;
         ([&] {
-          if (index_value == index_of_type<Ts>()) {
+          if (holds_alternative<Ts>()) {
               ret = get<Ts>() == o.get<Ts>();
               return true;
           }
