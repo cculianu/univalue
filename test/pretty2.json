@@ -11,5 +11,48 @@
         "SPV": [
             "Electron Cash"
         ]
-    }
+    },
+    null,
+    7,
+    42,
+    -42,
+    42.42,
+    -42.42,
+    true,
+    false,
+    [
+    ],
+    [
+        {
+        }
+    ],
+    {
+        "defects": null,
+        "value": 42,
+        "valuef": 42.42,
+        "is_happy": true,
+        "is_sad": false,
+        "empty_arr": [
+        ],
+        "empty_obj": {
+        }
+    },
+    {
+    },
+    [
+        null,
+        7,
+        42,
+        -42,
+        42.42,
+        -42.42,
+        true,
+        false,
+        [
+            [
+                [
+                ]
+            ]
+        ]
+    ]
 ]
