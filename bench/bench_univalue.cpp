@@ -24,14 +24,22 @@
 #include <profileapi.h>
 #endif
 
-#if __has_include(<nlohmann/json.hpp>)
+#if __has_include(<nlohmann/json.hpp>) && HAVE_NLOHMANN
 #include <nlohmann/json.hpp>
-#define HAVE_NLOHMANN
+#else
+#undef HAVE_NLOHMANN
 #endif
 
-#if __has_include(<jansson.h>)
+#if __has_include(<jansson.h>) && HAVE_JANSSON
 #include <jansson.h>
-#define HAVE_JANSSON
+#else
+#undef HAVE_JANSSON
+#endif
+
+#if __has_include(<yyjson.h>) && HAVE_YYJSON
+#include <yyjson.h>
+#else
+#undef HAVE_YYJSON
 #endif
 
 namespace {
@@ -299,6 +307,57 @@ bool runbench_jansson(const size_t N, const std::string &jdata)
 }
 #endif
 
+#ifdef HAVE_YYJSON
+[[nodiscard]]
+bool runbench_yyjson(const size_t N, const std::string &jdata)
+{
+    assert(N > 0);
+    std::cout << "Parsing and re-serializing " << N << " times ...\n";
+    std::vector<Tic> parseTimes, serializeTimes;
+    parseTimes.reserve(N); serializeTimes.reserve(N);
+    std::vector<std::string> strings;
+    strings.reserve(2);
+    Tic t0;
+    for (size_t i = 0; i < N; ++i) {
+        parseTimes.emplace_back(); // start timer
+        yyjson_read_err err = {};
+        yyjson_doc *json = yyjson_read_opts(const_cast<char *>(jdata.data()), jdata.size(), YYJSON_READ_NOFLAG, nullptr, &err);
+        Defer d([&json] { if (json) yyjson_doc_free(json), json = nullptr; });
+        if ( ! json) {
+            std::cerr << "Failed to parse on iteration " << i << ", code: " << err.code << ", pos: " << err.pos
+                      << ", msg: " << err.msg << "\n";
+            return false;
+        }
+        parseTimes.back().fin(); // freeze timer
+
+        serializeTimes.emplace_back(); // start timer
+        size_t sersz{};
+        const char *jsonStr = yyjson_write(json, YYJSON_WRITE_PRETTY, &sersz);
+        Defer d2([&jsonStr] { std::free(const_cast<char *>(jsonStr)); jsonStr = nullptr; });
+        if ((!sersz || !jsonStr) && !jdata.empty()) {
+            std::cerr << "Encoded empty data for iteration " << i << "!\n";
+            return false;
+        } else if (sersz < size_t(jdata.size() * 0.9)) {
+            // if the serialized buffer is < 90% of the original buffer something is very wrong here..
+            std::cerr << "sersz is much too small compared to jdata.size() (sersz: " << sersz << ", jdata.size(): "
+                      << jdata.size() << ") for for iteration " << i << "!\n";
+            return false;
+        }
+        strings.emplace_back(jsonStr, sersz);
+        serializeTimes.back().fin(); // freeze timer
+
+        // check strings -- this is to ensure json_dumpb is not a no-op above
+        assert(strings.size() < 2 || strings[strings.size() - 1] == strings[strings.size() - 2]);
+        strings.resize(1); // throw away old strings
+    }
+    t0.fin();
+
+    printResults(t0, parseTimes, serializeTimes);
+
+    return true;
+}
+#endif
+
 bool runbench_file(const std::string &path)
 {
     std::string jdata;
@@ -341,6 +400,11 @@ bool runbench_file(const std::string &path)
     if ( ! runbench_jansson(N, jdata))
         return false;
 #endif
+#ifdef HAVE_YYJSON
+    std::cout << "\n--- yyjson lib ---\n";
+    if ( ! runbench_yyjson(N, jdata))
+        return false;
+#endif
     return true;
 }
 
@@ -355,6 +419,10 @@ int main(int argc, char *argv[])
 #ifndef HAVE_JANSSON
     std::cerr << "WARNING: Jansson was not linked to this binary!\n"
               << "WARNING: For best results, please install Jansson and rebuild this program.\n\n";
+#endif
+#ifndef HAVE_YYJSON
+    std::cerr << "WARNING: yyjson was not linked to this binary!\n"
+              << "WARNING: For best results, please install yyjson and rebuild this program.\n\n";
 #endif
     int failct = 0;
     for (int i = 1; i < argc; ++i) {
