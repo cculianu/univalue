@@ -147,16 +147,14 @@ public:
         if (other.valueless())
             reset();
         else
-            ([&] {
-                if (other.holds_alternative<Ts>()) {
-                    if (holds_alternative<Ts>())
-                        get<Ts>() = other.get<Ts>(); // use direct copy-assign of contained type if they match
-                    else
-                        emplace<Ts>(other.get<Ts>()); // otherwise copy-construct in-place
-                    return true;
-                }
-                return false;
-            }() || ...);
+            other.visit([&](const auto &o_alt){
+                using T = rmcvr_t<decltype(o_alt)>;
+                if (holds_alternative<T>()) {
+                    assert(index_value == other.index_value);
+                    get<T>() = o_alt; // use direct copy-assign of contained type if they match
+                } else
+                    emplace<T>(o_alt); // otherwise copy-construct in-place
+            });
         return *this;
     }
 
@@ -164,17 +162,14 @@ public:
         if (other.valueless())
             reset();
         else
-            ([&] {
-                if (other.holds_alternative<Ts>()) {
-                    if (holds_alternative<Ts>())
-                        get<Ts>() = std::move(other.get<Ts>()); // use direct move-assign of contained type if they match
-                    else
-                        emplace<Ts>(std::move(other.get<Ts>())); // otherwise move-construct in-place
-                    other.reset();
-                    return true;
-                }
-                return false;
-            }() || ...);
+            other.visit([&](auto &o_alt){
+                using T = rmcvr_t<decltype(o_alt)>;
+                if (holds_alternative<T>()) {
+                    assert(index_value == other.index_value);
+                    get<T>() = std::move(o_alt); // use direct move-assign of contained type if they match
+                } else
+                    emplace<T>(std::move(o_alt)); // otherwise move-construct in-place
+            });
         return *this;
     }
 
@@ -198,16 +193,14 @@ public:
     constexpr explicit operator bool() const noexcept { return !valueless(); }
 
     void reset() {
-        if (!valueless()) {
-            ([&] {
-                if (holds_alternative<Ts>()) {
-                    u.template destroy<index_of_type<Ts>()>();
-                    return true;
-                }
-                return false;
-            }() || ...);
+        visit([&](const auto & alternative) {
+            using T = rmcvr_t<decltype(alternative)>;
+            constexpr auto iot = index_of_type<T>();
+            static_assert(iot < num_types && iot != invalid_index_value);
+            assert(iot == index_value);
+            u.template destroy<iot>();
             index_value = invalid_index_value;
-        }
+        });
     }
 
     template<typename T, typename ...Args>
@@ -215,8 +208,9 @@ public:
     /* T & */ emplace(Args && ...args) {
         reset();
         using BareT = rmcvr_t<T>;
-        u.template construct<index_of_type<BareT>()>(std::forward<Args>(args)...);
-        index_value = index_of_type<BareT>();
+        constexpr auto iot = index_of_type<BareT>();
+        u.template construct<iot>(std::forward<Args>(args)...);
+        index_value = iot;
         assert(index_value < num_types);
         return get<BareT>();
     }
@@ -242,6 +236,7 @@ public:
     // is thrown and the functor is never called.
     template<typename Func>
     constexpr void visit(Func && func) {
+        if (valueless()) return;
         ([&] {
            if (holds_alternative<Ts>()) {
                func(get<Ts>());
@@ -252,6 +247,7 @@ public:
     }
     template<typename Func>
     constexpr void visit(Func && func) const {
+        if (valueless()) return;
         ([&] {
           if (holds_alternative<Ts>()) {
               func(get<Ts>());
@@ -265,19 +261,17 @@ public:
         if (index_value != o.index_value) return false; // variants holding different types are always unequal
         else if (valueless()) return true; // nulls compare equal
         bool ret = false;
-        ([&] {
-          if (holds_alternative<Ts>()) {
-              ret = get<Ts>() == o.get<Ts>();
-              return true;
-          }
-          return false;
-        }() || ...);
+        visit([&](const auto & alternative) {
+            using T = rmcvr_t<decltype(alternative)>;
+            assert(index_value == o.index_value && index_value != invalid_index_value);
+            ret = get<T>() == o.get<T>();
+        });
         return ret;
     }
     bool operator!=(const variant & o) const noexcept { return !(*this == o); }
 };
 
-// helper type for use with variant::visit above
+// Helper type for use with variant::visit above
 template<typename ...Ts> struct visitor : Ts... { using Ts::operator()...; };
 template<typename ...Ts> visitor(Ts...) -> visitor<Ts...>;
 
