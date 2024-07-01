@@ -30,7 +30,9 @@ struct bad_variant_access : std::exception {
 
 /// A mostly-compatible replacement for C++17's std::variant.
 ///
-/// This type is a bit more flexible than std::variant in that it supports the concept of being "empty" or valueless.
+/// This type is a bit more flexible than std::variant in that it readily supports the concept of being "empty" or
+/// valueless, which is what it is if default-constructed.
+///
 /// The need for this class is due to the fact that some older C++17 compilers lack std::variant.
 ///
 /// Note that this class intentionally does not differentiate between T, const T, const T &, etc. It strips all types
@@ -51,6 +53,8 @@ class variant {
     template<typename...> union recursive_union; // fwd decl req'd since recursive_union references itself
 
     // Recursive union, used as a way to implement variants (other way would involve a byte blob buffer).
+    // This union-like class is unsafe in that it doesn't track which alternative is the active member. The outer
+    // `variant` class does, however.
     template<typename T0, typename ...TsN>
     union recursive_union<T0, TsN...> {
         rmcvr_t<T0> t0;
@@ -95,28 +99,37 @@ class variant {
     };
 
 public:
-    static constexpr uint8_t invalid_index_value = 0xffu;
     static constexpr size_t num_types = sizeof...(Ts);
-    static_assert (num_types < invalid_index_value && num_types > 0u, "Must specify at least 1 and no more than 254 types.");
+    using index_t = std::conditional_t<num_types <= std::numeric_limits<uint8_t>::max(), uint8_t,
+                                       std::conditional_t<num_types <= std::numeric_limits<uint16_t>::max(), uint16_t,
+                                                          std::conditional_t<num_types <= std::numeric_limits<uint32_t>::max(),
+                                                                             uint32_t, uint64_t>>>;
+
+    static constexpr index_t invalid_index_value = std::numeric_limits<index_t>::max();
+
+    // Sanity checks to ensure proper usage of this class, and that if this class is modified, invariants always hold.
+    static_assert (num_types <= invalid_index_value && invalid_index_value <= std::numeric_limits<size_t>::max(),
+                  "Sanity check for the auto-detect logic of index_t and invalid_index_value.");
+    static_assert (num_types > 0u, "Must specify at least 1 type.");
     static_assert (((std::is_same_v<Ts, rmcvr_t<Ts>> && !std::is_same_v<Ts, void>) && ...),
                    "All types must be non-reference, non-const, non-volatile, and non-void.");
 
     /// Returns either the index of type T, or invalid_index_value if this variant cannot contain a T
     template<typename T>
     static constexpr size_t index_of_type() {
-        int idx = -1, found_ct = 0;
-        [[maybe_unused]] auto dummy = ((++idx, found_ct += std::is_same_v<rmcvr_t<T>, Ts>) || ...);
-        if (!found_ct || idx < 0) idx = invalid_index_value;
-        return size_t(idx);
+        size_t idx_plus_1{};
+        const bool found = ((++idx_plus_1, std::is_same_v<rmcvr_t<T>, Ts>) || ...);
+        if (found && idx_plus_1 && idx_plus_1 <= num_types) return idx_plus_1 - 1u;
+        return invalid_index_value;
     }
 
 private:
-    uint8_t index_value = invalid_index_value;
+    index_t index_value = invalid_index_value;
     recursive_union<Ts...> u;
 
     static constexpr bool no_dupe_types() {
-        size_t idx{};
-        return ((++idx, index_of_type<Ts>() + 1u == idx) && ...);
+        size_t idx_plus_1{};
+        return ((++idx_plus_1, index_of_type<Ts>() + 1u == idx_plus_1) && ...);
     }
 
     static_assert (no_dupe_types(), "Duplicate types are not allowed.");
