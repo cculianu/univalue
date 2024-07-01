@@ -194,7 +194,7 @@ public:
     ~variant() { reset(); }
 
     constexpr size_t index() const noexcept { return index_value; }
-    constexpr bool valueless() const noexcept { return index() == invalid_index_value; }
+    constexpr bool valueless() const noexcept { return index_value == invalid_index_value; }
     constexpr explicit operator bool() const noexcept { return !valueless(); }
 
     void reset() {
@@ -235,7 +235,7 @@ public:
 
     template<typename T>
     constexpr std::enable_if_t<index_of_type<T>() < num_types, bool>
-    /* bool */ holds_alternative() const noexcept { return index_of_type<T>() == index_value; }
+    /* bool */ holds_alternative() const noexcept { return !valueless() && index_of_type<T>() == index(); }
 
     // for simplicity, our version of "visit" doesn't propagate the return result of the visitor
     template<typename Func>
