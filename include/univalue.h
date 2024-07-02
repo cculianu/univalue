@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <exception>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
